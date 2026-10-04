@@ -2,6 +2,7 @@ import * as data from './data.js';
 import { previewLabel, DEFAULT_SETTINGS } from './srs.js';
 import { sanitizeSentence, escapeHtml, stripHtml, parseDelimited, highlightWord } from './lib.js';
 import { renderEditor } from './editor.js';
+import { icon, brandMark } from './icons.js';
 
 const view = document.getElementById('view');
 let teardown = null;
@@ -17,6 +18,8 @@ function toast(msg) {
   toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
 }
 
+const isLearning = (c) => c.srs.state === 'learning' || c.srs.state === 'relearning';
+
 function stateLabel(srs) {
   if (srs.state === 'new') return '新規';
   if (srs.state !== 'review') return '学習中';
@@ -24,7 +27,50 @@ function stateLabel(srs) {
   return days <= 0 ? '今日' : `${days}日後`;
 }
 
-// ---------- 画面 ----------
+// 字幕風の英文
+const caption = (sentence) => `<div class="caption"><span class="line">${sanitizeSentence(sentence)}</span></div>`;
+
+function tile(c, signed) {
+  const img = c.image ? signed(c.image) : '';
+  return `<a class="tile" href="#/edit/${c.id}">
+    <div class="thumb">
+      ${img ? `<img src="${escapeHtml(img)}" alt="" loading="lazy">` : `<div class="noimg"><span>${sanitizeSentence(c.sentence)}</span></div>`}
+      <span class="badge ${c.srs.state === 'new' ? 'new' : ''}">${stateLabel(c.srs)}</span>
+    </div>
+    <div class="info">
+      <div class="title">${escapeHtml(c.word || stripHtml(c.sentence))}</div>
+      <div class="sub">${c.meaning ? `${escapeHtml(c.meaning)} · ` : ''}${escapeHtml(stripHtml(c.sentence))}</div>
+    </div>
+  </a>`;
+}
+
+function renderShell() {
+  document.getElementById('brand').innerHTML = `${brandMark}<span>Ankiもどき</span>`;
+  const items = [
+    ['', 'home', 'ホーム'],
+    ['review', 'play', '復習'],
+    ['new', 'add', '追加'],
+    ['browse', 'library', 'カード'],
+    ['settings', 'tune', '設定'],
+  ];
+  document.getElementById('nav').innerHTML = items
+    .map(([r, ic, label]) => `<a href="#/${r}" data-route="${r}" class="${r === 'new' ? 'add' : ''}">${icon(ic)}<span>${label}</span></a>`)
+    .join('');
+}
+
+function renderStatus() {
+  const end = document.getElementById('mastheadEnd');
+  const pending = data.pendingCount();
+  end.innerHTML = !navigator.onLine
+    ? `<span class="meta row" title="オフライン">${icon('offline', 18)}オフライン</span>`
+    : pending
+      ? `<span class="meta row" title="未送信の回答">${icon('sync', 18)}${pending}件 同期待ち</span>`
+      : '';
+}
+window.addEventListener('online', renderStatus);
+window.addEventListener('offline', renderStatus);
+
+// ---------- ルーティング ----------
 const routes = {
   '': home,
   review,
@@ -44,6 +90,8 @@ async function router() {
   window.scrollTo(0, 0);
   const [name = '', arg] = location.hash.replace(/^#\/?/, '').split('/');
   document.querySelectorAll('#nav a').forEach((a) => a.classList.toggle('active', a.dataset.route === name));
+  document.body.classList.toggle('no-guide', ['review', 'login'].includes(name) || !data.configured);
+  renderStatus();
 
   if (!data.configured) return setupNeeded();
   const user = await data.currentUser();
@@ -52,32 +100,30 @@ async function router() {
     location.hash = '#/login';
     return;
   }
-  document.getElementById('nav').hidden = !user;
   try {
     await (routes[name] || home)(arg);
   } catch (e) {
     console.error(e);
-    view.innerHTML = `<div class="panel"><p>読み込みに失敗しました: ${escapeHtml(e.message)}</p>
-      <button class="btn" onclick="location.reload()">再読み込み</button></div>`;
+    view.innerHTML = `<div class="empty"><p>読み込みに失敗しました: ${escapeHtml(e.message)}</p>
+      <button class="btn" onclick="location.reload()">${icon('replay')}再読み込み</button></div>`;
   }
 }
 
 function setupNeeded() {
-  document.getElementById('nav').hidden = true;
-  view.innerHTML = `<div class="panel stack">
+  view.innerHTML = `<div class="center-page"><div class="login">
+    <div class="brand">${brandMark}<span>Ankiもどき</span></div>
     <h1>初期設定が必要です</h1>
-    <p><code>public/config.js</code> に Supabase の Project URL と anon key を設定してください。手順は README.md を参照。</p>
-  </div>`;
+    <p class="meta" style="font-size:14px"><code>public/config.js</code> に Supabase の Project URL と anon key を設定してください。手順は README.md にあります。</p>
+  </div></div>`;
 }
 
 function login() {
-  view.innerHTML = `<form class="panel stack" id="f" style="max-width:420px;margin:40px auto">
-    <h1>ログイン</h1>
-    <label class="field"><span>メールアドレス</span><input type="email" id="email" autocomplete="username" required></label>
-    <label class="field"><span>パスワード</span><input type="password" id="pw" autocomplete="current-password" required></label>
-    <button class="btn primary" style="width:100%">ログイン</button>
-    <p class="muted">ユーザーは Supabase の管理画面で作成します（README 参照）。</p>
-  </form>`;
+  view.innerHTML = `<div class="center-page"><form class="login" id="f">
+    <div class="brand">${brandMark}<span>Ankiもどき</span></div>
+    <label class="field"><span class="label">メールアドレス</span><input type="email" id="email" autocomplete="username" required></label>
+    <label class="field"><span class="label">パスワード</span><input type="password" id="pw" autocomplete="current-password" required></label>
+    <button class="btn primary lg">ログイン</button>
+  </form></div>`;
   view.querySelector('#f').addEventListener('submit', async (e) => {
     e.preventDefault();
     try {
@@ -90,34 +136,54 @@ function login() {
   });
 }
 
+// ---------- ホーム ----------
 async function home() {
-  view.innerHTML = '<p class="muted">読み込み中…</p>';
+  view.innerHTML = '';
   await data.loadSettings().catch(() => {});
   const { cards, dayEnd } = await data.loadQueue();
   const n = cards.filter((c) => c.srs.state === 'new').length;
-  const l = cards.filter((c) => c.srs.state === 'learning' || c.srs.state === 'relearning').length;
+  const l = cards.filter(isLearning).length;
   const r = cards.filter((c) => c.srs.state === 'review' && c.srs.due < dayEnd).length;
-  const pending = data.pendingCount();
+  const total = n + l + r;
+  const cover = cards.find((c) => c.image);
+  const signed = await data.signUrls([cover?.image]);
+
   view.innerHTML = `
-    <div class="panel stack">
-      <h1>今日の学習</h1>
-      <div class="counts">
-        <div class="c-new"><b>${n}</b>新規</div>
-        <div class="c-learn"><b>${l}</b>学習中</div>
-        <div class="c-review"><b>${r}</b>復習</div>
+    <section class="hero ${total ? '' : 'done'}">
+      <a class="player ${cover ? '' : 'blank'}" href="#/review" aria-label="復習を始める">
+        ${cover ? `<img src="${escapeHtml(signed(cover.image))}" alt="">` : ''}
+        ${total ? `<span class="playbtn">${icon('play')}</span>` : caption('今日の分は完了しました')}
+      </a>
+      <h1 class="watch-title">${total ? `今日の復習 · 残り ${total} 枚` : 'おつかれさまでした'}</h1>
+      <div class="watch-meta">
+        <span class="n">新規 <b>${n}</b></span>·<span class="l">学習中 <b>${l}</b></span>·<span class="r">復習 <b>${r}</b></span>
       </div>
-      <a class="btn primary" style="width:100%;padding:14px" href="#/review">${n + l + r ? '復習を始める' : '今日の分は完了 🎉'}</a>
-      ${pending ? `<p class="muted">未送信の回答 ${pending} 件（オンラインになると自動で同期されます）</p>` : ''}
-      ${navigator.onLine ? '' : '<p class="muted">オフラインです。前回読み込んだカードで復習できます。</p>'}
-    </div>
-    <div class="row" style="margin-top:12px">
-      <a class="btn" href="#/new">＋ カードを追加</a>
-      <a class="btn" href="#/import">CSV取り込み（Language Reactor）</a>
-    </div>`;
+      ${data.pendingCount() ? `<div class="notice">${icon('sync')}未送信の回答 ${data.pendingCount()} 件。オンラインになると自動で同期されます</div>` : ''}
+      ${navigator.onLine ? '' : `<div class="notice">${icon('offline')}オフラインです。前回読み込んだカードで復習できます</div>`}
+      <div class="chips" style="margin-top:12px">
+        <a class="chip" href="#/new">${icon('add', 18)}カードを追加</a>
+        <a class="chip" href="#/import">${icon('upload', 18)}CSV取り込み</a>
+      </div>
+    </section>
+    <h2>最近追加したカード</h2>
+    <div class="grid" id="recent"></div>`;
+
+  try {
+    const { cards: recent } = await data.listCards('', 0, 8);
+    const s = await data.signUrls(recent.map((c) => c.image));
+    view.querySelector('#recent').innerHTML = recent.length
+      ? recent.map((c) => tile(c, s)).join('')
+      : '<p class="meta">まだカードがありません。YouTube で知らない単語を選んで Alt+A を押すか、「追加」から作成してください。</p>';
+  } catch {
+    // オフライン時などは「最近追加したカード」欄ごと隠す
+    view.querySelector('#recent')?.previousElementSibling?.remove();
+    view.querySelector('#recent')?.remove();
+  }
 }
 
+// ---------- 復習（再生ページ風） ----------
 async function review() {
-  view.innerHTML = '<p class="muted">読み込み中…</p>';
+  view.innerHTML = '';
   const { cards, settings, dayEnd } = await data.loadQueue();
   const signed = await data.signUrls(cards.flatMap((c) => [c.image, c.refImage]));
   const LEARN_AHEAD = 20 * 60 * 1000;
@@ -125,8 +191,8 @@ async function review() {
   let showing = false;
   let answered = 0;
   let waitTimer = null;
+  let ccOn = localStorage.getItem('am:cc') !== 'off';
 
-  const isLearning = (c) => c.srs.state === 'learning' || c.srs.state === 'relearning';
   const remaining = () => cards.filter((c) => c.srs.state === 'new' || isLearning(c) || (c.srs.state === 'review' && c.srs.due < dayEnd));
 
   function pick() {
@@ -142,23 +208,6 @@ async function review() {
     return ahead[0] ?? null;
   }
 
-  function counts() {
-    const now = Date.now();
-    const rest = remaining();
-    return `<div class="bar">
-      <span class="n">${rest.filter((c) => c.srs.state === 'new').length}</span>
-      <span class="l">${rest.filter((c) => isLearning(c) && c.srs.due <= now + LEARN_AHEAD).length}</span>
-      <span class="r">${rest.filter((c) => c.srs.state === 'review').length}</span>
-    </div>`;
-  }
-
-  function imgs(c) {
-    const parts = [];
-    if (c.image) parts.push(`<img src="${escapeHtml(signed(c.image))}" alt="スクリーンショット">`);
-    if (c.refImage) parts.push(`<img src="${escapeHtml(signed(c.refImage))}" alt="イメージ画像"><div class="label">語源 / イメージ</div>`);
-    return parts.length ? `<div class="imgs">${parts.join('')}</div>` : '';
-  }
-
   function speak(c) {
     if (!('speechSynthesis' in window)) return;
     speechSynthesis.cancel();
@@ -167,54 +216,79 @@ async function review() {
     speechSynthesis.speak(u);
   }
 
+  function screen(title, body) {
+    view.innerHTML = `<div class="watch">
+      <div class="player blank">${caption(title)}</div>
+      ${body}
+    </div>`;
+  }
+
   function render() {
     clearTimeout(waitTimer);
     current = pick();
     showing = false;
-    if (!current) {
-      const later = cards.filter(isLearning).sort((a, b) => a.srs.due - b.srs.due)[0];
-      if (later) {
-        const t = new Date(later.srs.due).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
-        view.innerHTML = `<div class="panel stack" style="text-align:center"><h1>ひと休み</h1>
-          <p>次の学習中カードは <b>${t}</b> 頃に出題されます。</p><a class="btn" href="#/">ホームへ</a></div>`;
-        waitTimer = setTimeout(render, Math.min(60000, Math.max(1000, later.srs.due - LEARN_AHEAD - Date.now())));
-        return;
-      }
-      view.innerHTML = `<div class="panel stack" style="text-align:center"><h1>今日の分は完了 🎉</h1>
-        <p>${answered} 枚回答しました。</p><a class="btn" href="#/">ホームへ</a></div>`;
+    if (current) return draw();
+    const later = cards.filter(isLearning).sort((a, b) => a.srs.due - b.srs.due)[0];
+    if (later) {
+      const t = new Date(later.srs.due).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+      screen('ひと休み', `<h1 class="watch-title">次のカードは ${t} 頃に出題されます</h1>
+        <div class="watch-meta">このページを開いたままにすると自動で再開します</div>
+        <div class="chips"><a class="chip" href="#/">${icon('home', 18)}ホームへ</a></div>`);
+      waitTimer = setTimeout(render, Math.min(60000, Math.max(1000, later.srs.due - LEARN_AHEAD - Date.now())));
       return;
     }
-    draw();
+    screen('今日の分は完了しました', `<h1 class="watch-title">${answered} 枚回答しました</h1>
+      <div class="chips"><a class="chip" href="#/">${icon('home', 18)}ホームへ</a><a class="chip" href="#/new">${icon('add', 18)}カードを追加</a></div>`);
   }
 
   function draw() {
     const c = current;
     const now = Date.now();
-    view.innerHTML = `<div class="review">
-      ${counts()}
-      <div class="card" id="cardArea">
-        <div class="sentence">${sanitizeSentence(c.sentence)}</div>
-        ${showing ? `<hr>
-          <div class="meaning">${escapeHtml(c.meaning) || '<span class="muted">（意味未入力）</span>'}</div>
-          ${imgs(c)}
-          <div class="src">
-            ${c.source?.url ? `<a href="${escapeHtml(c.source.url)}" target="_blank" rel="noopener">${escapeHtml(c.source.title || '出典')}</a> · ` : ''}
-            <button class="icon-btn" id="speak" title="読み上げ">🔊</button>
-            <a href="#/edit/${c.id}" class="muted">編集</a>
-          </div>` : ''}
+    const rest = remaining();
+    const pct = Math.round((answered / (answered + rest.length || 1)) * 100);
+    const showImg = showing && c.image;
+    const src = c.source?.url ? `<a class="chip" href="${escapeHtml(c.source.url)}" target="_blank" rel="noopener">${icon('open', 18)}元の動画</a>` : '';
+
+    view.innerHTML = `<div class="watch">
+      <div class="player ${showImg ? '' : 'blank'} ${ccOn ? '' : 'cc-off'}" id="player">
+        ${showImg ? `<img src="${escapeHtml(signed(c.image))}" alt="">` : ''}
+        ${caption(c.sentence)}
+        <div class="progress"><i style="width:${pct}%"></i></div>
       </div>
-      <div class="answer-bar">
-        ${showing
-          ? `<button class="again" id="again">Again<small>${previewLabel(c.id, c.srs, 'again', now, settings)}</small></button>
-             <button class="good" id="good">Good<small>${previewLabel(c.id, c.srs, 'good', now, settings)}</small></button>`
-          : '<button class="show" id="show">答えを見る</button>'}
+      ${showing
+        ? `<h1 class="watch-title">${escapeHtml(c.meaning) || '<span class="meta">（意味が未入力です）</span>'}</h1>`
+        : '<h1 class="watch-title pending">意味と場面を思い浮かべてから「答えを見る」</h1>'}
+      <div class="watch-meta">
+        <span>${escapeHtml(c.word)}</span>${c.word ? '·' : ''}<span>${stateLabel(c.srs)}</span>
+        <span class="spacer"></span>
+        <span class="n"><b>${rest.filter((x) => x.srs.state === 'new').length}</b></span>
+        <span class="l"><b>${rest.filter((x) => isLearning(x) && x.srs.due <= now + LEARN_AHEAD).length}</b></span>
+        <span class="r"><b>${rest.filter((x) => x.srs.state === 'review').length}</b></span>
       </div>
-    </div>`;
+      <div class="chips">
+        <button class="chip" id="speak">${icon('volume', 18)}読み上げ</button>
+        ${showing ? `<button class="chip ${ccOn ? 'active' : ''}" id="cc">${icon('cc', 18)}字幕</button>${src}<a class="chip" href="#/edit/${c.id}">${icon('edit', 18)}編集</a>` : ''}
+      </div>
+      ${showing && c.refImage ? `<div class="desc"><div class="head">イメージ</div><img src="${escapeHtml(signed(c.refImage))}" alt=""></div>` : ''}
+      ${showing && c.source?.title ? `<div class="meta" style="margin-top:12px">${escapeHtml(c.source.title)}</div>` : ''}
+    </div>
+    <div class="answer-bar"><div class="inner">
+      ${showing
+        ? `<button class="btn" id="again">Again <small>${previewLabel(c.id, c.srs, 'again', now, settings)} <span class="kbd">· 1</span></small></button>
+           <button class="btn primary" id="good">Good <small>${previewLabel(c.id, c.srs, 'good', now, settings)} <span class="kbd">· Space</span></small></button>`
+        : '<button class="btn primary" id="show">答えを見る <small class="kbd">Space</small></button>'}
+    </div></div>`;
+
     view.querySelector('#show')?.addEventListener('click', flip);
     view.querySelector('#again')?.addEventListener('click', () => rate('again'));
     view.querySelector('#good')?.addEventListener('click', () => rate('good'));
-    view.querySelector('#speak')?.addEventListener('click', () => speak(c));
-    if (!showing) view.querySelector('#cardArea').addEventListener('click', flip);
+    view.querySelector('#speak').addEventListener('click', () => speak(c));
+    view.querySelector('#cc')?.addEventListener('click', () => {
+      ccOn = !ccOn;
+      localStorage.setItem('am:cc', ccOn ? 'on' : 'off');
+      draw();
+    });
+    if (!showing) view.querySelector('#player').addEventListener('click', flip);
   }
 
   function flip() {
@@ -227,6 +301,7 @@ async function review() {
     if (!current || !showing) return;
     data.recordAnswer(current, rating, settings);
     answered++;
+    renderStatus();
     render();
   }
 
@@ -235,7 +310,7 @@ async function review() {
     if (!showing && (e.key === ' ' || e.key === 'Enter')) {
       e.preventDefault();
       flip();
-    } else if (showing && (e.key === '1')) {
+    } else if (showing && e.key === '1') {
       rate('again');
     } else if (showing && (e.key === '2' || e.key === ' ' || e.key === 'Enter')) {
       e.preventDefault();
@@ -246,11 +321,12 @@ async function review() {
   teardown = () => {
     clearTimeout(waitTimer);
     document.removeEventListener('keydown', onKey);
-    speechSynthesis?.cancel?.();
+    if ('speechSynthesis' in window) speechSynthesis.cancel();
   };
   render();
 }
 
+// ---------- 追加・編集 ----------
 function editNew() {
   const capture = pendingCapture;
   pendingCapture = null;
@@ -266,7 +342,7 @@ function editNew() {
 }
 
 async function edit(id) {
-  view.innerHTML = '<p class="muted">読み込み中…</p>';
+  view.innerHTML = '';
   const card = await data.getCard(id);
   teardown = renderEditor(view, {
     card,
@@ -276,14 +352,27 @@ async function edit(id) {
   });
 }
 
+// ---------- カード一覧 ----------
 async function browse() {
-  view.innerHTML = `<h1>カード一覧</h1>
-    <input type="search" id="q" placeholder="単語・文・意味で検索">
-    <p class="muted" id="total"></p>
-    <div class="list" id="list"></div>
-    <button class="btn" id="more" hidden style="width:100%;margin-top:12px">もっと見る</button>`;
+  view.innerHTML = `
+    <div class="row" style="margin:8px 0 12px">
+      <form class="search" id="sf" role="search">
+        <input type="search" id="q" placeholder="単語・文・意味で検索" enterkeyhint="search">
+        <button class="go" aria-label="検索">${icon('search')}</button>
+      </form>
+    </div>
+    <div class="chips" id="filters">
+      <button class="chip active" data-state="">すべて</button>
+      <button class="chip" data-state="new">新規</button>
+      <button class="chip" data-state="learning">学習中</button>
+      <button class="chip" data-state="review">復習</button>
+    </div>
+    <div class="meta" id="total" style="margin-bottom:12px"></div>
+    <div class="grid" id="list"></div>
+    <div class="row" style="justify-content:center;margin-top:24px"><button class="btn" id="more" hidden>さらに表示</button></div>`;
   const list = view.querySelector('#list');
   let q = '';
+  let state = '';
   let offset = 0;
   let timer;
 
@@ -292,43 +381,46 @@ async function browse() {
       offset = 0;
       list.innerHTML = '';
     }
-    const { total, cards } = await data.listCards(q, offset);
+    const { total, cards } = await data.listCards(q, offset, 48, state);
     const signed = await data.signUrls(cards.map((c) => c.image));
     offset += cards.length;
     view.querySelector('#total').textContent = `${total} 枚`;
     view.querySelector('#more').hidden = offset >= total;
-    list.insertAdjacentHTML(
-      'beforeend',
-      cards
-        .map(
-          (c) => `<a class="item" href="#/edit/${c.id}">
-            ${c.image ? `<img src="${escapeHtml(signed(c.image))}" alt="" loading="lazy">` : '<div class="noimg"></div>'}
-            <div class="body"><div class="w">${escapeHtml(c.word || '—')} <span class="muted">${escapeHtml(c.meaning)}</span></div>
-            <div class="s">${escapeHtml(stripHtml(c.sentence))}</div></div>
-            <span class="badge">${stateLabel(c.srs)}</span></a>`
-        )
-        .join('')
-    );
+    if (!total) list.innerHTML = '<p class="meta">該当するカードはありません</p>';
+    list.insertAdjacentHTML('beforeend', cards.map((c) => tile(c, signed)).join(''));
   }
-  view.querySelector('#q').addEventListener('input', (e) => {
+  const search = () => {
+    q = view.querySelector('#q').value.trim();
+    load(true);
+  };
+  view.querySelector('#sf').addEventListener('submit', (e) => {
+    e.preventDefault();
+    search();
+  });
+  view.querySelector('#q').addEventListener('input', () => {
     clearTimeout(timer);
-    timer = setTimeout(() => {
-      q = e.target.value.trim();
-      load(true);
-    }, 300);
+    timer = setTimeout(search, 300);
+  });
+  view.querySelector('#filters').addEventListener('click', (e) => {
+    const chip = e.target.closest('.chip');
+    if (!chip) return;
+    view.querySelectorAll('#filters .chip').forEach((c) => c.classList.toggle('active', c === chip));
+    state = chip.dataset.state;
+    load(true);
   });
   view.querySelector('#more').addEventListener('click', () => load(false));
   await load(true);
 }
 
-// Language Reactor の「保存した単語」などを CSV/TSV で取り込む
+// ---------- CSV 取り込み（Language Reactor の保存単語など） ----------
 function importView() {
-  view.innerHTML = `<h1>CSV / TSV 取り込み</h1>
-    <div class="panel stack">
-      <p class="muted">Language Reactor の保存単語エクスポート（CSV / TSV）などを読み込めます。列の割り当てを選んでから取り込んでください。画像は取り込まれないので、必要なら後から一覧で追加してください。</p>
-      <input type="file" id="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values">
-      <div id="mapping"></div>
-    </div>`;
+  view.innerHTML = `<div class="narrow">
+    <h1>CSV / TSV 取り込み</h1>
+    <p class="meta" style="font-size:14px">Language Reactor の保存単語エクスポートなどを読み込みます。画像は取り込まれないので、必要なら後からカードを編集して追加してください。</p>
+    <label class="btn" style="margin:8px 0 16px">${icon('upload')}ファイルを選択
+      <input type="file" id="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values" hidden></label>
+    <div id="mapping"></div>
+  </div>`;
   view.querySelector('#file').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -346,12 +438,14 @@ function importView() {
       Array.from({ length: width }, (_, i) => `<option value="${i}" ${i === sel ? 'selected' : ''}>${i + 1}列目: ${escapeHtml((rows[0][i] || '').slice(0, 30))}</option>`).join('');
     const box = view.querySelector('#mapping');
     box.innerHTML = `
-      <label class="row"><input type="checkbox" id="header" ${Object.values(guessed).some((i) => i >= 0) ? 'checked' : ''}> 1行目は見出し</label>
-      <label class="field"><span>センテンス（必須）</span><select id="m-sentence">${opts(guessed.sentence)}</select></label>
-      <label class="field"><span>単語（センテンス内で自動ハイライト）</span><select id="m-word">${opts(guessed.word)}</select></label>
-      <label class="field"><span>日本語の意味</span><select id="m-meaning">${opts(guessed.meaning)}</select></label>
-      <div id="pv"></div>
-      <button class="btn primary" id="go">取り込む</button>`;
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <label class="row"><input type="checkbox" id="header" ${Object.values(guessed).some((i) => i >= 0) ? 'checked' : ''}> 1行目は見出し</label>
+        <label class="field"><span class="label">センテンス（必須）</span><select id="m-sentence">${opts(guessed.sentence)}</select></label>
+        <label class="field"><span class="label">単語（センテンス内で自動ハイライト）</span><select id="m-word">${opts(guessed.word)}</select></label>
+        <label class="field"><span class="label">日本語の意味</span><select id="m-meaning">${opts(guessed.meaning)}</select></label>
+        <div id="pv"></div>
+        <div><button class="btn primary" id="go">取り込む</button></div>
+      </div>`;
 
     const build = () => {
       const idx = (k) => Number(box.querySelector(`#m-${k}`).value);
@@ -369,7 +463,7 @@ function importView() {
     };
     const preview = () => {
       const items = build();
-      box.querySelector('#pv').innerHTML = `<p class="muted">${items.length} 件（先頭5件のプレビュー）</p>
+      box.querySelector('#pv').innerHTML = `<div class="meta">${items.length} 件（先頭5件のプレビュー）</div>
         <table class="preview"><tr><th>センテンス</th><th>意味</th></tr>${items
           .slice(0, 5)
           .map((r) => `<tr><td>${sanitizeSentence(r.sentence)}</td><td>${escapeHtml(r.meaning)}</td></tr>`)
@@ -394,29 +488,42 @@ function importView() {
   });
 }
 
+// ---------- 設定 ----------
 async function settings() {
   const s = await data.loadSettings();
   const user = await data.currentUser();
-  const field = (key, label, hint = '') =>
-    `<label class="field"><span>${label}${hint ? `（${hint}）` : ''}</span>
+  const field = (key, label) =>
+    `<label class="field"><span class="label">${label}</span>
       <input type="text" inputmode="decimal" id="s-${key}" value="${escapeHtml(Array.isArray(s[key]) ? s[key].join(' ') : s[key])}"></label>`;
-  view.innerHTML = `<h1>設定</h1>
-    <form class="panel stack" id="f">
-      ${field('newPerDay', '1日の新規カード数')}
-      ${field('learningSteps', '学習ステップ', '分・スペース区切り')}
-      ${field('relearningSteps', 'Again 後の再学習ステップ', '分')}
-      ${field('graduatingInterval', '卒業間隔', '日')}
-      ${field('startingEase', '初期 Ease')}
-      ${field('lapseEasePenalty', 'Again 時の Ease 減少')}
-      ${field('maxInterval', '最大間隔', '日')}
-      ${field('dayStartHour', '1日の区切り', '時')}
-      <div class="row"><button class="btn primary">保存</button><button class="btn" type="button" id="def">初期値に戻す</button></div>
+  view.innerHTML = `<div class="narrow">
+    <h1>設定</h1>
+    <form id="f">
+      <div class="form-grid">
+        ${field('newPerDay', '1日の新規カード数')}
+        ${field('dayStartHour', '1日の区切り（時）')}
+        ${field('learningSteps', '学習ステップ（分・スペース区切り）')}
+        ${field('relearningSteps', 'Again 後の再学習ステップ（分）')}
+        ${field('graduatingInterval', '卒業間隔（日）')}
+        ${field('maxInterval', '最大間隔（日）')}
+        ${field('startingEase', '初期 Ease')}
+        ${field('lapseEasePenalty', 'Again 時の Ease 減少')}
+      </div>
+      <div class="actions" style="margin-top:16px">
+        <button class="btn primary">保存</button>
+        <button class="btn ghost" type="button" id="def">初期値に戻す</button>
+      </div>
     </form>
-    <div class="panel stack" style="margin-top:16px">
-      <div>ログイン中: ${escapeHtml(user?.email ?? '')}</div>
-      <div class="muted">未送信の回答: ${data.pendingCount()} 件</div>
-      <div class="row"><button class="btn" id="sync">今すぐ同期</button><button class="btn danger" id="logout">ログアウト</button></div>
-    </div>`;
+    <div class="section">
+      <h2>アカウント</h2>
+      <div class="meta" style="font-size:14px">${escapeHtml(user?.email ?? '')}</div>
+      <div class="meta">未送信の回答: ${data.pendingCount()} 件</div>
+      <div class="actions" style="margin-top:12px">
+        <button class="btn" id="sync">${icon('sync')}今すぐ同期</button>
+        <button class="btn" id="import">${icon('upload')}CSV取り込み</button>
+        <button class="btn ghost danger" id="logout">${icon('logout')}ログアウト</button>
+      </div>
+    </div>
+  </div>`;
   const form = view.querySelector('#f');
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -439,8 +546,10 @@ async function settings() {
     toast('初期値に戻しました');
     settings();
   });
+  view.querySelector('#import').addEventListener('click', () => (location.hash = '#/import'));
   view.querySelector('#sync').addEventListener('click', async () => {
     await data.flush();
+    renderStatus();
     toast(data.pendingCount() ? `まだ ${data.pendingCount()} 件残っています（オフライン？）` : '同期しました');
   });
   view.querySelector('#logout').addEventListener('click', async () => {
@@ -461,6 +570,7 @@ function receiveCapture(detail) {
 window.addEventListener('anki-capture', (e) => receiveCapture(e.detail));
 
 // ---------- 起動 ----------
+renderShell();
 window.addEventListener('hashchange', router);
 if (window.__ankiCapture) {
   pendingCapture = window.__ankiCapture;

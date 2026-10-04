@@ -1,5 +1,5 @@
 // オフライン対応: アプリ本体はネット優先（更新をすぐ反映）、画像とライブラリはキャッシュ優先
-const SHELL = 'shell-v1';
+const SHELL = 'shell-v2';
 const RUNTIME = 'runtime-v1';
 const SHELL_FILES = [
   './',
@@ -12,6 +12,7 @@ const SHELL_FILES = [
   'js/editor.js',
   'js/lib.js',
   'js/srs.js',
+  'js/icons.js',
   'icons/icon.svg',
   'icons/icon-192.png',
   'icons/icon-512.png',
@@ -40,8 +41,8 @@ self.addEventListener('fetch', (e) => {
     e.respondWith(cacheFirst(req, { ignoreSearch: true }));
     return;
   }
-  // CDN のライブラリ（supabase-js）
-  if (url.hostname === 'cdn.jsdelivr.net') {
+  // CDN のライブラリ（supabase-js）と Web フォント
+  if (['cdn.jsdelivr.net', 'fonts.googleapis.com', 'fonts.gstatic.com'].includes(url.hostname)) {
     e.respondWith(cacheFirst(req));
     return;
   }

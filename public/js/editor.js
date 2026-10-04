@@ -1,6 +1,7 @@
 // カード作成・編集フォーム
 import * as data from './data.js';
 import { sanitizeSentence, extractWord, escapeHtml, highlightWord, stripHtml } from './lib.js';
+import { icon } from './icons.js';
 
 const SIZE = { image: 960, refImage: 640 }; // 自動リサイズ後の最大幅(px)
 
@@ -95,51 +96,54 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
   };
 
   root.innerHTML = `
-    <h1>${isNew ? 'カードを追加' : 'カードを編集'}</h1>
-    <div class="stack">
-      <div>
-        <div class="row" style="margin-bottom:6px">
-          <span class="muted">センテンス（i+1 の英文）</span>
-          <span class="spacer"></span>
-          <button class="btn small" id="hlBtn" title="Alt+H">🖍 単語を色付け</button>
+    <div class="row" style="margin:12px 0 16px">
+      <h1 style="margin:0">${isNew ? 'カードを追加' : 'カードを編集'}</h1>
+    </div>
+    <div class="studio">
+      <div class="form">
+        <div class="field">
+          <span class="label">センテンス（i+1 の英文）</span>
+          <span class="tools"><button class="btn ghost sm" id="hlBtn" title="選択した単語を色付け (Alt+H)">${icon('brush', 18)}色付け</button></span>
+          <div id="sentence" class="sentence-edit" contenteditable="true"
+               data-placeholder="字幕の英文を貼り付けて、知らない単語を選択 →「色付け」"></div>
         </div>
-        <div id="sentence" class="editor-sentence" contenteditable="true"
-             data-placeholder="字幕の英文を貼り付け → 知らない単語を選択して「色付け」"></div>
-        <div class="muted" id="wordInfo" style="margin-top:4px"></div>
-      </div>
 
-      <label class="field"><span>日本語の意味（この文脈の意味だけ）</span>
-        <textarea id="meaning" rows="2" placeholder="例: 〜をうやむやにする"></textarea>
-      </label>
+        <label class="field"><span class="label">日本語の意味（この文脈の意味だけ）</span>
+          <textarea id="meaning" rows="2" placeholder="例: 〜をうやむやにする"></textarea>
+        </label>
 
-      <details class="panel" id="dictBox" open>
-        <summary><b>英英辞典</b> <span class="muted">— 文脈に合う定義を選んで「和訳」</span></summary>
-        <div class="row" style="margin:8px 0">
-          <a class="btn small" id="imgSearch" target="_blank" rel="noopener">🔎 Google画像検索</a>
-          <a class="btn small" id="cambridge" target="_blank" rel="noopener">Cambridge</a>
-          <a class="btn small" id="longman" target="_blank" rel="noopener">Longman</a>
-        </div>
-        <div class="dict" id="dict"><p class="muted">単語を色付けすると定義が表示されます</p></div>
-      </details>
-
-      <div class="img-grid">
         <div>
-          <div class="muted">画像（動画のスクショ）</div>
-          <div class="dropzone" id="zone-image" tabindex="0"></div>
+          <div class="sub-label">英英辞典 <span class="meta" id="wordInfo"></span></div>
+          <div class="chips" style="padding-top:0">
+            <a class="chip" id="imgSearch" target="_blank" rel="noopener">${icon('search', 18)}Google画像検索</a>
+            <a class="chip" id="cambridge" target="_blank" rel="noopener">Cambridge</a>
+            <a class="chip" id="longman" target="_blank" rel="noopener">Longman</a>
+          </div>
+          <div class="desc dict" id="dict"><span class="meta">単語を色付けすると定義が表示されます。文脈に合う定義の「和訳」を押してください</span></div>
         </div>
-        <div>
-          <div class="muted">語源 / イメージ画像</div>
-          <div class="dropzone" id="zone-refImage" tabindex="0"></div>
+
+        <div class="img-grid">
+          <div>
+            <div class="sub-label">場面のスクリーンショット</div>
+            <div class="dropzone" id="zone-image" tabindex="0"></div>
+          </div>
+          <div>
+            <div class="sub-label">語源 / イメージ画像</div>
+            <div class="dropzone" id="zone-refImage" tabindex="0"></div>
+          </div>
+        </div>
+
+        <div class="actions sticky">
+          <button class="btn primary" id="save">保存 <span class="kbd">Ctrl+Enter</span></button>
+          ${isNew ? '' : `<button class="btn" id="reset">${icon('replay')}学習をリセット</button><span class="spacer"></span><button class="btn ghost danger" id="del">${icon('trash')}削除</button>`}
         </div>
       </div>
-      <p class="muted" style="margin:4px 0 0">画像は Ctrl+V で貼り付け・ドラッグ＆ドロップ・クリックで選択。自動で縮小されます。</p>
 
-      ${source ? `<p class="muted">出典: <a href="${escapeHtml(source.url)}" target="_blank" rel="noopener">${escapeHtml(source.title || source.url)}</a></p>` : ''}
-
-      <div class="row">
-        <button class="btn primary" id="save">保存 <span class="muted" style="color:inherit;opacity:.8">Ctrl+Enter</span></button>
-        ${isNew ? '' : '<button class="btn" id="reset">学習をリセット</button><span class="spacer"></span><button class="btn danger" id="del">削除</button>'}
-      </div>
+      <aside>
+        <div class="player blank" id="pvPlayer"></div>
+        <div class="preview-title" id="pvTitle"></div>
+        <div class="meta">${source ? `<a class="link" href="${escapeHtml(source.url)}" target="_blank" rel="noopener">${escapeHtml(source.title || source.url)}</a>` : 'プレビュー（復習時の裏面）'}</div>
+      </aside>
     </div>`;
 
   const $ = (s) => root.querySelector(s);
@@ -197,7 +201,8 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
 
   function onSentenceChange() {
     const w = currentWord();
-    $('#wordInfo').innerHTML = w ? `対象の単語: <b class="hl">${escapeHtml(w)}</b>` : '未知の単語を選択して色付けしてください';
+    $('#wordInfo').innerHTML = w ? `— <span class="hl">${escapeHtml(w)}</span>` : '— 単語がまだ色付けされていません';
+    updatePreview();
     $('#imgSearch').href = imageSearchUrl(w);
     $('#cambridge').href = `https://dictionary.cambridge.org/dictionary/english/${encodeURIComponent(w)}`;
     $('#longman').href = `https://www.ldoceonline.com/dictionary/${encodeURIComponent(w.toLowerCase().replace(/\s+/g, '-'))}`;
@@ -211,12 +216,12 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
   // ----- 辞書 -----
   async function renderDict(word) {
     const box = $('#dict');
-    box.innerHTML = '<p class="muted">検索中…</p>';
+    box.innerHTML = '<span class="meta">検索中…</span>';
     try {
       const meanings = await lookup(word);
       if (word !== lastWord) return;
       if (!meanings.length) {
-        box.innerHTML = `<p class="muted">「${escapeHtml(word)}」は見つかりませんでした。原形（例: running → run）で試すか、上のリンクから調べてください。</p>`;
+        box.innerHTML = `<span class="meta">「${escapeHtml(word)}」は見つかりませんでした。原形（例: running → run）で試すか、上のリンクから調べてください。</span>`;
         return;
       }
       box.innerHTML = meanings
@@ -225,13 +230,13 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
             .map(
               (d) => `<li><span class="def">${escapeHtml(d.definition)}</span>
                 ${d.example ? `<div class="ex">${escapeHtml(d.example)}</div>` : ''}
-                <div class="row" style="margin-top:2px"><button class="btn small tr-btn">和訳</button></div></li>`
+                <div class="row" style="margin-top:4px"><button class="btn sm tr-btn">${icon('translate', 18)}和訳</button></div></li>`
             )
             .join('')}</ol>`
         )
         .join('');
     } catch (e) {
-      box.innerHTML = `<p class="muted">${escapeHtml(e.message)}</p>`;
+      box.innerHTML = `<span class="meta">${escapeHtml(e.message)}</span>`;
     }
   }
 
@@ -246,10 +251,11 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
       li.querySelector('.tr')?.remove();
       const div = document.createElement('div');
       div.className = 'tr';
-      div.innerHTML = `${escapeHtml(ja)} <button class="btn small use-btn">意味に入れる</button>`;
+      div.innerHTML = `<span>${escapeHtml(ja)}</span><button class="btn primary sm use-btn">${icon('check', 18)}意味に入れる</button>`;
       div.querySelector('.use-btn').addEventListener('click', () => {
         meaningEl.value = ja;
         meaningEl.focus();
+        updatePreview();
       });
       li.append(div);
     } catch {
@@ -272,12 +278,26 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
     drawZone('refImage');
   });
 
+  // 右側のプレビュー（復習時の裏面と同じ見た目）
+  function updatePreview() {
+    const shot = srcOf(images.image);
+    const player = $('#pvPlayer');
+    player.className = `player ${shot ? '' : 'blank'}`;
+    player.innerHTML = `${shot ? `<img src="${escapeHtml(shot)}" alt="">` : ''}
+      <div class="caption"><span class="line">${sanitizeSentence(sentenceEl.innerHTML) || '<span style="opacity:.6">センテンス</span>'}</span></div>`;
+    $('#pvTitle').textContent = meaningEl.value.trim() || '日本語の意味';
+    $('#pvTitle').style.opacity = meaningEl.value.trim() ? 1 : 0.5;
+  }
+  meaningEl.addEventListener('input', updatePreview);
+
   function drawZone(key) {
     const zone = $(`#zone-${key}`);
     const v = images[key];
+    zone.classList.toggle('filled', !!v);
     zone.innerHTML = v
-      ? `<img src="${escapeHtml(srcOf(v))}" alt=""><button class="btn small remove" title="削除">✕</button>`
-      : `<div>ここに貼り付け / ドロップ<br>またはクリックして選択${key === 'refImage' ? '<br><br>Google画像で「画像をコピー」→ Ctrl+V' : ''}</div>`;
+      ? `<img src="${escapeHtml(srcOf(v))}" alt=""><button class="icon-btn remove" title="画像を外す">${icon('close', 20)}</button>`
+      : `${icon('image')}<div>Ctrl+V で貼り付け・ドロップ・クリックで選択</div>${key === 'refImage' ? '<div>Google画像で右クリック →「画像をコピー」</div>' : ''}`;
+    if (key === 'image') updatePreview();
     zone.querySelector('.remove')?.addEventListener('click', (e) => {
       e.stopPropagation();
       if (v && v.url) URL.revokeObjectURL(v.url);

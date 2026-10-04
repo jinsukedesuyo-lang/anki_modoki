@@ -123,8 +123,11 @@ function fromRow(r) {
   };
 }
 
-export async function listCards(q = '', offset = 0, limit = 50) {
+// state: '' | 'new' | 'learning'（再学習を含む） | 'review'
+export async function listCards(q = '', offset = 0, limit = 48, state = '') {
   let query = sb.from('anki_cards').select('*', { count: 'exact' }).order('created_at', { ascending: false });
+  if (state === 'learning') query = query.in('state', ['learning', 'relearning']);
+  else if (state) query = query.eq('state', state);
   if (q) {
     const s = q.replace(/[%,()]/g, ' ');
     query = query.or(`word.ilike.%${s}%,sentence.ilike.%${s}%,meaning.ilike.%${s}%`);
