@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>Ankiもどき キャプチャ 設定</title>
+  <style>
+    body { font: 15px/1.6 system-ui, "Segoe UI", "Hiragino Sans", sans-serif; max-width: 640px; margin: 32px auto; padding: 0 16px; }
+    input { width: 100%; padding: 8px 10px; font: inherit; box-sizing: border-box; }
+    button { padding: 8px 16px; font: inherit; margin-top: 8px; cursor: pointer; }
+    .muted { color: #667085; font-size: 13px; }
+    code { background: #f0f2f5; padding: 1px 4px; border-radius: 4px; }
+    li { margin: 4px 0; }
+  </style>
+</head>
+<body>
+  <h1>Ankiもどき キャプチャ</h1>
+  <label for="appUrl"><b>Ankiもどき の URL</b></label>
+  <input id="appUrl" type="url" placeholder="https://ユーザー名.github.io/anki_modoki/">
+  <p class="muted">GitHub Pages で公開した URL（ローカル確認なら <code>http://localhost:8080/</code>）</p>
+  <button id="save">保存</button> <span id="status"></span>
+
+  <h2>使い方</h2>
+  <ol>
+    <li>YouTube / Netflix で Language Reactor の字幕を表示</li>
+    <li>知らない単語を<b>マウスで選択</b>（ダブルクリックでも可）</li>
+    <li><b>Alt+A</b>（またはツールバーのアイコン / 右クリック →「Ankiもどきでカード作成」）</li>
+    <li>動画が一時停止し、字幕の文・単語の色付け・スクリーンショットが入った状態で追加画面が開きます</li>
+    <li>意味と語源画像を入れて保存</li>
+  </ol>
+  <p class="muted">ショートカットは <code>chrome://extensions/shortcuts</code> で変更できます。Netflix は著作権保護によりスクリーンショットが黒くなる場合があります。</p>
+
+  <script src="options.js"></script>
+</body>
+</html>

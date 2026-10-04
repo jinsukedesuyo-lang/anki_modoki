@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Ankiもどき キャプチャ",
+  "version": "1.0.0",
+  "description": "YouTube / Netflix（Language Reactor）の字幕・単語・スクリーンショットから Ankiもどき のカードを作成します。",
+  "icons": { "16": "icons/icon-16.png", "48": "icons/icon-48.png", "128": "icons/icon-128.png" },
+  "action": { "default_title": "Ankiもどき: カード作成 (Alt+A)", "default_icon": { "16": "icons/icon-16.png", "48": "icons/icon-48.png" } },
+  "background": { "service_worker": "background.js" },
+  "permissions": ["activeTab", "scripting", "contextMenus", "storage", "tabs"],
+  "host_permissions": [
+    "https://www.youtube.com/*",
+    "https://www.netflix.com/*",
+    "https://*.github.io/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/*", "https://www.netflix.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "commands": {
+    "capture": {
+      "suggested_key": { "default": "Alt+A" },
+      "description": "今の字幕・選択した単語・スクリーンショットでカードを作成"
+    }
+  },
+  "options_page": "options.html"
+}
