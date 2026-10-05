@@ -6,21 +6,28 @@ const MIN = 60_000;
 const DAY = 86_400_000;
 const t0 = new Date(2026, 9, 4, 12, 0).getTime(); // ローカル時刻 12:00
 
-test('新規 → Good を学習ステップ分押すと卒業して1日後', () => {
-  let s = newSrs();
-  s = answer('a', s, 'good', t0);
-  assert.equal(s.state, 'learning');
-  assert.equal(s.due, t0 + 10 * MIN);
-  s = answer('a', s, 'good', t0 + 10 * MIN);
+test('新規 → Good 1回で卒業して1日後（同じ日にもう一度出ない）', () => {
+  const s = answer('a', newSrs(), 'good', t0);
   assert.equal(s.state, 'review');
   assert.equal(s.interval, 1);
   assert.equal(s.due, dayStart(t0) + DAY);
 });
 
-test('学習中の Again は最初のステップに戻る', () => {
-  let s = answer('a', newSrs(), 'good', t0);
-  s = answer('a', s, 'again', t0 + MIN);
+test('新規 → Again は10分後に再出題、その後 Good で卒業', () => {
+  let s = answer('a', newSrs(), 'again', t0);
   assert.equal(s.state, 'learning');
+  assert.equal(s.due, t0 + 10 * MIN);
+  s = answer('a', s, 'good', t0 + 10 * MIN);
+  assert.equal(s.state, 'review');
+  assert.equal(s.interval, 1);
+});
+
+test('学習ステップを複数にした場合は従来どおり段階を踏む', () => {
+  const S2 = { ...S, learningSteps: [1, 10] };
+  let s = answer('a', newSrs(), 'good', t0, S2);
+  assert.equal(s.state, 'learning');
+  assert.equal(s.due, t0 + 10 * MIN);
+  s = answer('a', s, 'again', t0 + MIN, S2);
   assert.equal(s.step, 0);
   assert.equal(s.due, t0 + 2 * MIN);
 });

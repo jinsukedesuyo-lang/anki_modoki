@@ -4,7 +4,8 @@
 
 export const DEFAULT_SETTINGS = {
   newPerDay: 20,
-  learningSteps: [1, 10], // 分
+  // 新規カードは Good 1回で卒業させる（Again のときだけ10分後に再出題）
+  learningSteps: [10], // 分
   relearningSteps: [10], // 分
   graduatingInterval: 1, // 日
   startingEase: 2.5,
