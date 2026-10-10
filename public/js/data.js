@@ -117,6 +117,7 @@ function fromRow(r) {
     meaning: r.meaning,
     image: r.image,
     refImage: r.ref_image,
+    imagery: r.imagery ?? null,
     source: r.source,
     srs: r.srs,
     created: r.created_at,
@@ -159,6 +160,8 @@ export async function saveCard(input, existing = null) {
     source: input.source ?? null,
     updated_at: new Date().toISOString(),
   };
+  // AI のイメージがあるときだけ送る（schema_ai.sql 未実行の環境でも保存できるように）
+  if (input.imagery) row.imagery = input.imagery;
 
   if (existing) {
     const card = fromRow(check(await sb.from('anki_cards').update(row).eq('id', existing.id).select().single()));
@@ -167,6 +170,50 @@ export async function saveCard(input, existing = null) {
   }
   const srs = newSrs(cachedSettings());
   return fromRow(check(await sb.from('anki_cards').insert({ ...row, srs, state: srs.state, due: srs.due }).select().single()));
+}
+
+// ---------- AI イメージ生成（Supabase Edge Function 経由。APIキーはサーバー側） ----------
+// payload: { mode: 'full' | 'image', sentence, word, title, screenshot?: { mime_type, data }, imagery? }
+export async function generateImagery(payload) {
+  const { data, error } = await sb.functions.invoke('anki-imagine', { body: payload });
+  if (error) {
+    let msg = error.message;
+    try {
+      const body = await error.context?.json?.();
+      if (body?.error) msg = body.error;
+    } catch {
+      /* 本文が JSON でなければ元のメッセージのまま */
+    }
+    if (/Failed to send|NetworkError|fetch/i.test(msg)) msg = 'AI機能に接続できません。Edge Function がデプロイされているか確認してください（README 参照）';
+    throw new Error(msg);
+  }
+  return data;
+}
+
+// 円換算レート（利用料の表示用。端末ごとに保存）
+export function usdJpy() {
+  return Number(store.get('usdjpy', 150)) || 150;
+}
+export function setUsdJpy(v) {
+  store.set('usdjpy', Number(v) || 150);
+}
+
+// AI の利用ログ（料金の計測用）
+export async function listAiUsage(sinceIso = null) {
+  let q = sb.from('anki_ai_usage').select('*').order('created_at', { ascending: false }).limit(5000);
+  if (sinceIso) q = q.gte('created_at', sinceIso);
+  const { data, error } = await q;
+  if (error) {
+    if (/anki_ai_usage/.test(error.message)) throw new Error('利用ログのテーブルがありません。Supabase で supabase/schema_ai.sql を実行してください');
+    throw new Error(error.message);
+  }
+  return data;
+}
+
+// 指定時刻以降に復習したカードのID（会話練習の対象選び用）
+export async function reviewedCardIds(sinceTs) {
+  const rows = check(await sb.from('anki_revlog').select('card_id, rating, ts').gte('ts', sinceTs).limit(5000));
+  return rows;
 }
 
 export async function deleteCard(card) {

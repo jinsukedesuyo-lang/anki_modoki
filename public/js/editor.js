@@ -122,6 +122,15 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
           <div class="desc dict" id="dict"><span class="meta">単語を色付けすると定義が表示されます。文脈に合う定義の「和訳」を押してください</span></div>
         </div>
 
+        <div>
+          <div class="sub-label">${icon('spark', 18)}ネイティブのイメージ（AI） <span class="meta" id="aiCost"></span></div>
+          <div class="desc" id="aiResult"></div>
+          <div class="chips" style="padding-top:8px">
+            <button class="chip active" id="aiGen" type="button">${icon('spark', 18)}文脈からイメージと画像を生成</button>
+            <button class="chip" id="aiImg" type="button" hidden>${icon('replay', 18)}画像だけ作り直す</button>
+          </div>
+        </div>
+
         <div class="img-grid">
           <div>
             <div class="sub-label">場面のスクリーンショット</div>
@@ -142,6 +151,7 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
       <aside>
         <div class="player blank" id="pvPlayer"></div>
         <div class="preview-title" id="pvTitle"></div>
+        <div class="meta" id="pvImagery" style="font-size:13px;margin-bottom:4px"></div>
         <div class="meta">${source ? `<a class="link" href="${escapeHtml(source.url)}" target="_blank" rel="noopener">${escapeHtml(source.title || source.url)}</a>` : 'プレビュー（復習時の裏面）'}</div>
       </aside>
     </div>`;
@@ -151,6 +161,7 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
   const meaningEl = $('#meaning');
   let activeZone = 'image';
   let lastWord = '';
+  let imagery = card?.imagery ?? null; // AI が作ったイメージ（保存時にカードへ入る）
 
   // ----- センテンス -----
   if (card) {
@@ -287,6 +298,7 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
       <div class="caption"><span class="line">${sanitizeSentence(sentenceEl.innerHTML) || '<span style="opacity:.6">センテンス</span>'}</span></div>`;
     $('#pvTitle').textContent = meaningEl.value.trim() || '日本語の意味';
     $('#pvTitle').style.opacity = meaningEl.value.trim() ? 1 : 0.5;
+    $('#pvImagery').textContent = imagery?.core_image_ja ?? '';
   }
   meaningEl.addEventListener('input', updatePreview);
 
@@ -305,6 +317,75 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
       drawZone(key);
     });
   }
+
+  // ----- AI でネイティブのイメージ + 画像を生成 -----
+  function renderImagery() {
+    const box = $('#aiResult');
+    $('#aiImg').hidden = !imagery?.image_prompt;
+    if (!imagery) {
+      box.innerHTML = `<span class="meta">単語を色付けして「生成」を押すと、この文脈でネイティブが思い浮かべるイメージを言葉と画像で作ります。スクショがあると場面に合わせやすくなります。</span>`;
+      return;
+    }
+    box.innerHTML = `
+      <div style="font-size:15px;font-weight:500">${escapeHtml(imagery.core_image_ja || '')}</div>
+      ${imagery.scene_ja ? `<div style="margin-top:6px">${escapeHtml(imagery.scene_ja)}</div>` : ''}
+      ${imagery.sense_en ? `<div class="meta" style="margin-top:6px">${escapeHtml(imagery.sense_en)}</div>` : ''}`;
+  }
+
+  const blobToBase64 = (blob) =>
+    new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result).split(',')[1]);
+      r.onerror = reject;
+      r.readAsDataURL(blob);
+    });
+
+  // 文脈理解用のスクショ（384px に縮めてトークンを節約）
+  async function screenshotPayload() {
+    const v = images.image;
+    if (!v) return null;
+    try {
+      const blob = v.blob ?? (await (await fetch(srcOf(v))).blob());
+      const small = await resizeImage(blob, 384);
+      return { mime_type: 'image/jpeg', data: await blobToBase64(small) };
+    } catch {
+      return null; // スクショなしでも生成はできる
+    }
+  }
+
+  async function runAi(mode) {
+    const sentence = stripHtml(sanitizeSentence(sentenceEl.innerHTML));
+    const word = currentWord();
+    if (mode === 'full' && !word) return toast('先にセンテンスの単語を色付けしてください');
+    const buttons = [$('#aiGen'), $('#aiImg')];
+    buttons.forEach((b) => (b.disabled = true));
+    $('#aiCost').textContent = mode === 'full' ? '— 生成中…（10〜40秒）' : '— 画像を作り直し中…';
+    try {
+      const res = await data.generateImagery({
+        mode,
+        sentence,
+        word,
+        title: source?.title ?? '',
+        screenshot: mode === 'full' ? await screenshotPayload() : null,
+        imagery: mode === 'image' ? imagery : undefined,
+      });
+      imagery = res.imagery;
+      await setImage('refImage', await dataUrlToBlob(`data:${res.image.mime_type};base64,${res.image.data}`));
+      if (!meaningEl.value.trim() && imagery.meaning_ja) meaningEl.value = imagery.meaning_ja;
+      const usd = res.usage?.cost_usd ?? 0;
+      $('#aiCost').textContent = `— 今回 $${usd.toFixed(4)}（約 ${(usd * data.usdJpy()).toFixed(2)} 円）`;
+      renderImagery();
+      updatePreview();
+    } catch (e) {
+      $('#aiCost').textContent = '';
+      toast(e.message);
+    } finally {
+      buttons.forEach((b) => (b.disabled = false));
+    }
+  }
+  $('#aiGen').addEventListener('click', () => runAi('full'));
+  $('#aiImg').addEventListener('click', () => runAi('image'));
+  renderImagery();
 
   async function setImage(key, blob) {
     try {
@@ -379,7 +460,7 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
     $('#save').disabled = true;
     try {
       const saved = await data.saveCard(
-        { sentence, meaning: meaningEl.value, image: images.image, refImage: images.refImage, source },
+        { sentence, meaning: meaningEl.value, image: images.image, refImage: images.refImage, source, imagery },
         card
       );
       toast(isNew ? `「${saved.word || '新しいカード'}」を追加しました` : '保存しました');

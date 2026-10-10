@@ -1,5 +1,6 @@
 import * as data from './data.js';
-import { previewLabel, DEFAULT_SETTINGS } from './srs.js';
+import { previewLabel, DEFAULT_SETTINGS, dayStart } from './srs.js';
+import { buildPracticePrompt, MODES } from './practice.js';
 import { sanitizeSentence, escapeHtml, stripHtml, parseDelimited, highlightWord } from './lib.js';
 import { renderEditor } from './editor.js';
 import { icon, brandMark } from './icons.js';
@@ -80,6 +81,8 @@ const routes = {
   import: importView,
   settings,
   login,
+  practice,
+  usage,
 };
 
 let routeSeq = 0;
@@ -162,7 +165,9 @@ async function home() {
       ${navigator.onLine ? '' : `<div class="notice">${icon('offline')}オフラインです。前回読み込んだカードで復習できます</div>`}
       <div class="chips" style="margin-top:12px">
         <a class="chip" href="#/new">${icon('add', 18)}カードを追加</a>
+        <a class="chip" href="#/practice">${icon('chat', 18)}会話で使ってみる</a>
         <a class="chip" href="#/import">${icon('upload', 18)}CSV取り込み</a>
+        <a class="chip" href="#/usage">${icon('chart', 18)}AI利用料</a>
       </div>
     </section>
     <h2>最近追加したカード</h2>
@@ -238,7 +243,7 @@ async function review() {
       return;
     }
     screen('今日の分は完了しました', `<h1 class="watch-title">${answered} 枚回答しました</h1>
-      <div class="chips"><a class="chip" href="#/">${icon('home', 18)}ホームへ</a><a class="chip" href="#/new">${icon('add', 18)}カードを追加</a></div>`);
+      <div class="chips"><a class="chip" href="#/">${icon('home', 18)}ホームへ</a><a class="chip active" href="#/practice">${icon('chat', 18)}会話で使ってみる</a><a class="chip" href="#/new">${icon('add', 18)}カードを追加</a></div>`);
   }
 
   function draw() {
@@ -269,7 +274,14 @@ async function review() {
         <button class="chip" id="speak">${icon('volume', 18)}読み上げ</button>
         ${showing ? `<button class="chip ${ccOn ? 'active' : ''}" id="cc">${icon('cc', 18)}字幕</button>${src}<a class="chip" href="#/edit/${c.id}">${icon('edit', 18)}編集</a>` : ''}
       </div>
-      ${showing && c.refImage ? `<div class="desc"><div class="head">イメージ</div><img src="${escapeHtml(signed(c.refImage))}" alt=""></div>` : ''}
+      ${showing && (c.refImage || c.imagery?.core_image_ja)
+        ? `<div class="desc">
+            <div class="head">${c.imagery ? 'ネイティブのイメージ' : 'イメージ'}</div>
+            ${c.imagery?.core_image_ja ? `<div style="font-size:15px;margin-bottom:4px">${escapeHtml(c.imagery.core_image_ja)}</div>` : ''}
+            ${c.imagery?.scene_ja ? `<div class="meta" style="font-size:13px;margin-bottom:8px">${escapeHtml(c.imagery.scene_ja)}</div>` : ''}
+            ${c.refImage ? `<img src="${escapeHtml(signed(c.refImage))}" alt="">` : ''}
+          </div>`
+        : ''}
       ${showing && c.source?.title ? `<div class="meta" style="margin-top:12px">${escapeHtml(c.source.title)}</div>` : ''}
     </div>
     <div class="answer-bar"><div class="inner">
@@ -488,6 +500,283 @@ function importView() {
   });
 }
 
+// ---------- 会話練習（生成AIと話して使う） ----------
+async function practice() {
+  view.innerHTML = '';
+  const settings = data.cachedSettings();
+  const ds = dayStart(Date.now(), settings);
+  const [{ cards: all }, logs] = await Promise.all([data.listCards('', 0, 1000), data.reviewedCardIds(ds - 13 * 864e5)]);
+  const studied = all.filter((c) => c.srs.state !== 'new');
+  if (!studied.length) {
+    view.innerHTML = `<div class="empty"><h1>会話で使ってみる</h1><p>復習したカードがまだありません。まずは何枚か復習してから試してください。</p>
+      <a class="btn" href="#/review">${icon('play')}復習へ</a></div>`;
+    return;
+  }
+  const todayIds = new Set(logs.filter((l) => l.ts >= ds).map((l) => l.card_id));
+  const againIds = new Set(logs.filter((l) => l.rating === 'again').map((l) => l.card_id));
+  const groups = {
+    today: { label: '今日復習した', cards: studied.filter((c) => todayIds.has(c.id)) },
+    weak: {
+      label: '間違えた・苦手',
+      cards: studied
+        .filter((c) => againIds.has(c.id) || c.srs.lapses > 0 || c.srs.state === 'relearning')
+        .sort((a, b) => (b.srs.lapses || 0) - (a.srs.lapses || 0)),
+    },
+    recent: { label: '最近覚えた', cards: studied.filter((c) => Date.now() - new Date(c.created).getTime() < 7 * 864e5) },
+    all: { label: 'すべて', cards: studied },
+  };
+  let saved = {};
+  try {
+    saved = JSON.parse(localStorage.getItem('am:practice') || '{}');
+  } catch {
+    /* 壊れた保存値は無視 */
+  }
+  const st = {
+    group: Object.keys(groups).find((g) => groups[g].cards.length),
+    mode: MODES[saved.mode] ? saved.mode : 'retrieval',
+    level: saved.level ?? 'B1',
+    voice: !!saved.voice,
+    selected: new Set(),
+  };
+  const pickDefault = () => (st.selected = new Set(groups[st.group].cards.slice(0, 6).map((c) => c.id)));
+  pickDefault();
+
+  view.innerHTML = `<div class="narrow" style="max-width:760px">
+    <h1>会話で使ってみる</h1>
+    <p class="meta" style="font-size:14px">覚えた表現を ChatGPT・Claude・Gemini との会話で<b>自分の口から使う</b>ためのプロンプトを作ります。1回5〜8語、15分くらいが目安です。</p>
+
+    <div class="sub-label" style="margin-top:20px">練習する表現</div>
+    <div class="chips" id="groups"></div>
+    <div class="pick-list" id="picks"></div>
+
+    <div class="sub-label" style="margin-top:20px">進め方</div>
+    <div class="chips" id="modes"></div>
+    <div class="meta" id="modeHint" style="margin:-4px 0 12px"></div>
+    <div class="row" style="gap:16px">
+      <label class="field" style="flex:1;min-width:200px"><span class="label">英語のレベル</span>
+        <select id="level"><option value="A2">A2（やさしめ）</option><option value="B1">B1（日常会話）</option><option value="B2">B2（自然なスピード）</option></select></label>
+      <label class="row"><input type="checkbox" id="voice"> 音声で話す（音声モード向け）</label>
+    </div>
+
+    <div class="sub-label" style="margin-top:20px">プロンプト <span class="meta" id="pcount"></span></div>
+    <textarea id="out" readonly rows="12" class="prompt-out"></textarea>
+    <div class="actions" style="margin-top:12px">
+      <button class="btn primary" id="copy">${icon('copy')}コピー</button>
+      <button class="btn" id="chatgpt">${icon('open')}ChatGPTで開く</button>
+      <button class="btn" id="claude">${icon('open')}Claudeで開く</button>
+      <button class="btn" id="gemini">${icon('open')}Geminiで開く</button>
+      <button class="btn ghost" id="save">${icon('download')}テキストで保存</button>
+    </div>
+    <div class="desc" style="margin-top:16px;font-size:13px;line-height:1.8">
+      <div class="head">使い方のコツ</div>
+      ・音声で話すなら「音声で話す」をオンにして、ChatGPT や Gemini アプリの音声モードで貼り付けてから話しかけます<br>
+      ・詰まってもすぐ答えを聞かず、ヒントで思い出すほうが定着します<br>
+      ・最後に <b>finish</b> と言うと、日本語の振り返り（自力で使えた / ヒントで使えた / 使えなかった）が出ます。使えなかった表現は、次の復習で意識してみてください
+    </div>
+  </div>`;
+
+  const $ = (s) => view.querySelector(s);
+  $('#level').value = st.level;
+  $('#voice').checked = st.voice;
+
+  const selectedCards = () => groups.all.cards.filter((c) => st.selected.has(c.id));
+  function update() {
+    localStorage.setItem('am:practice', JSON.stringify({ mode: st.mode, level: st.level, voice: st.voice }));
+    $('#groups').innerHTML = Object.entries(groups)
+      .map(([k, g]) => `<button class="chip ${k === st.group ? 'active' : ''}" data-g="${k}" ${g.cards.length ? '' : 'disabled'}>${g.label} <b>${g.cards.length}</b></button>`)
+      .join('');
+    $('#picks').innerHTML = groups[st.group].cards
+      .map((c) => `<label class="pick"><input type="checkbox" data-id="${c.id}" ${st.selected.has(c.id) ? 'checked' : ''}>
+        <span class="w">${escapeHtml(c.word || stripHtml(c.sentence))}</span><span class="meta">${escapeHtml(c.meaning)}</span></label>`)
+      .join('');
+    $('#modes').innerHTML = Object.entries(MODES)
+      .map(([k, m]) => `<button class="chip ${k === st.mode ? 'active' : ''}" data-m="${k}">${m.label}</button>`)
+      .join('');
+    $('#modeHint').textContent = MODES[st.mode].hint;
+    const cards = selectedCards();
+    $('#pcount').textContent = `— ${cards.length} 語${cards.length > 8 ? '（多いと1語ずつが浅くなります。5〜8語がおすすめ）' : ''}`;
+    $('#out').value = cards.length ? buildPracticePrompt({ cards, mode: st.mode, level: st.level, voice: st.voice }) : '';
+  }
+  $('#groups').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-g]');
+    if (!b) return;
+    st.group = b.dataset.g;
+    pickDefault();
+    update();
+  });
+  $('#picks').addEventListener('change', (e) => {
+    const id = e.target.dataset.id;
+    if (e.target.checked) st.selected.add(id);
+    else st.selected.delete(id);
+    update();
+  });
+  $('#modes').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-m]');
+    if (!b) return;
+    st.mode = b.dataset.m;
+    update();
+  });
+  $('#level').addEventListener('change', (e) => {
+    st.level = e.target.value;
+    update();
+  });
+  $('#voice').addEventListener('change', (e) => {
+    st.voice = e.target.checked;
+    update();
+  });
+
+  async function copy() {
+    const text = $('#out').value;
+    if (!text) {
+      toast('練習する表現を選んでください');
+      return false;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      $('#out').select();
+      document.execCommand('copy');
+    }
+    return true;
+  }
+  // 開く前にコピーしておく（URL で文章を渡せないサービスや、長すぎて切れた場合は貼り付けで済む）
+  async function openWith(url, name) {
+    if (!(await copy())) return;
+    window.open(url, '_blank', 'noopener');
+    toast(`${name}を開きました。入力欄が空なら貼り付け（Ctrl+V）してください`);
+  }
+  $('#copy').addEventListener('click', async () => {
+    if (await copy()) toast('コピーしました。AI のチャットに貼り付けて送信してください');
+  });
+  $('#chatgpt').addEventListener('click', () => openWith(`https://chatgpt.com/?q=${encodeURIComponent($('#out').value)}`, 'ChatGPT'));
+  $('#claude').addEventListener('click', () => openWith(`https://claude.ai/new?q=${encodeURIComponent($('#out').value)}`, 'Claude'));
+  $('#gemini').addEventListener('click', () => openWith('https://gemini.google.com/app', 'Gemini'));
+  $('#save').addEventListener('click', () => {
+    const text = $('#out').value;
+    if (!text) return toast('練習する表現を選んでください');
+    download(`会話練習_${new Date().toISOString().slice(0, 10)}.txt`, text, 'text/plain');
+  });
+  update();
+}
+
+function download(filename, text, type) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type }));
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+// ---------- AI 利用料（製品化したときのコスト見積もり用） ----------
+async function usage() {
+  view.innerHTML = '';
+  const rows = await data.listAiUsage();
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+  const month = rows.filter((r) => new Date(r.created_at) >= monthStart);
+  const sum = (list) => list.reduce((s, r) => s + Number(r.cost_usd), 0);
+  // 「生成」1回 = request_id 単位（画像まで成功したもの）。失敗した呼び出しの費用も平均に含める
+  const generations = (list) => new Set(list.filter((r) => r.step === 'image' && r.ok).map((r) => r.request_id)).size;
+  const genAll = generations(rows);
+  const perGen = genAll ? sum(rows) / genAll : null;
+  const ESTIMATE = 0.0357; // 実績が無いときの目安（分析 約$0.002 + 画像 約$0.034）
+  const unit = perGen ?? ESTIMATE;
+  const usd = (v, d = 4) => `$${v.toFixed(d)}`;
+  const yen = (v) => {
+    const y = v * data.usdJpy();
+    return `${y.toLocaleString('ja-JP', { maximumFractionDigits: y < 10 ? 2 : 0 })} 円`;
+  };
+
+  // 処理 × モデル別の内訳
+  const groups = {};
+  for (const r of rows) {
+    const g = (groups[`${r.step}|${r.model}`] ??= { step: r.step, model: r.model, n: 0, inp: 0, out: 0, img: 0, cost: 0, fail: 0 });
+    g.n++;
+    g.inp += r.input_tokens;
+    g.out += r.output_tokens + r.thought_tokens;
+    g.img += r.image_tokens;
+    g.cost += Number(r.cost_usd);
+    if (!r.ok) g.fail++;
+  }
+  const stepName = { concept: '文脈の分析', image: '画像生成' };
+  let sim = { cards: 300, users: 100 };
+  try {
+    sim = { ...sim, ...JSON.parse(localStorage.getItem('am:sim') || '{}') };
+  } catch {
+    /* 壊れた保存値は無視 */
+  }
+
+  view.innerHTML = `<div style="max-width:960px">
+    <h1>AI 利用料</h1>
+    <div class="kpis">
+      <div><span>今月の費用</span><b>${yen(sum(month))}</b><small>${usd(sum(month))} · ${generations(month)} 回生成</small></div>
+      <div><span>1回の生成あたり</span><b>${yen(unit)}</b><small>${perGen == null ? '目安（まだ実績がありません）' : `${usd(unit)} · 実績 ${genAll} 回の平均`}</small></div>
+      <div><span>累計</span><b>${yen(sum(rows))}</b><small>${usd(sum(rows))} · API 呼び出し ${rows.length} 回</small></div>
+    </div>
+
+    <h2>製品化したときの試算</h2>
+    <div class="desc">
+      <div class="form-grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
+        <label class="field"><span class="label">1人あたり月の生成枚数</span><input type="number" id="simCards" min="0" value="${sim.cards}"></label>
+        <label class="field"><span class="label">ユーザー数</span><input type="number" id="simUsers" min="0" value="${sim.users}"></label>
+        <label class="field"><span class="label">為替（円 / ドル）</span><input type="number" id="rate" min="1" step="0.1" value="${data.usdJpy()}"></label>
+      </div>
+      <div class="kpis" id="simOut" style="margin-top:12px"></div>
+      <div class="meta" style="margin-top:8px">1回の生成 = 文脈の分析 + 画像1枚。実績の平均単価（失敗した呼び出しの費用も含む）で計算しています。</div>
+    </div>
+
+    <h2>内訳</h2>
+    ${Object.keys(groups).length
+      ? `<div style="overflow-x:auto"><table class="preview">
+        <tr><th>処理</th><th>モデル</th><th>回数</th><th>平均 入力</th><th>平均 出力（思考込み）</th><th>平均 画像</th><th>平均費用</th><th>合計</th></tr>
+        ${Object.values(groups)
+          .map((g) => `<tr><td>${stepName[g.step] ?? escapeHtml(g.step)}</td><td>${escapeHtml(g.model)}</td><td>${g.n}${g.fail ? `（失敗 ${g.fail}）` : ''}</td>
+            <td>${Math.round(g.inp / g.n)}</td><td>${Math.round(g.out / g.n)}</td><td>${Math.round(g.img / g.n)}</td>
+            <td>${usd(g.cost / g.n, 5)}</td><td>${usd(g.cost)}</td></tr>`)
+          .join('')}
+      </table></div>`
+      : '<p class="meta">まだ AI を使っていません。カード作成画面の「文脈からイメージと画像を生成」を使うと、ここに記録されます。</p>'}
+
+    <h2>履歴 <span class="meta">（新しい順 50 件）</span></h2>
+    <div class="actions" style="margin-bottom:8px"><button class="btn sm" id="csv">${icon('download', 18)}CSV で書き出す（全件）</button></div>
+    <div style="overflow-x:auto"><table class="preview">
+      <tr><th>日時</th><th>単語</th><th>処理</th><th>トークン（入力 / 出力 / 画像）</th><th>費用</th><th>結果</th></tr>
+      ${rows
+        .slice(0, 50)
+        .map((r) => `<tr><td>${new Date(r.created_at).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+          <td>${escapeHtml(r.word)}</td><td>${stepName[r.step] ?? escapeHtml(r.step)}</td>
+          <td>${r.input_tokens} / ${r.output_tokens + r.thought_tokens} / ${r.image_tokens}</td>
+          <td>${usd(Number(r.cost_usd), 5)}</td><td>${r.ok ? 'OK' : `<span class="meta" title="${escapeHtml(r.error || '')}">失敗</span>`}</td></tr>`)
+        .join('')}
+    </table></div>
+  </div>`;
+
+  const $ = (s) => view.querySelector(s);
+  function renderSim() {
+    const cards = Number($('#simCards').value) || 0;
+    const users = Number($('#simUsers').value) || 0;
+    const rate = Number($('#rate').value) || 150;
+    localStorage.setItem('am:sim', JSON.stringify({ cards, users }));
+    data.setUsdJpy(rate);
+    const perUser = unit * cards;
+    const fmt = (v) => `${Math.round(v * rate).toLocaleString('ja-JP')} 円`;
+    $('#simOut').innerHTML = `
+      <div><span>1人あたり / 月</span><b>${fmt(perUser)}</b><small>$${perUser.toFixed(2)}</small></div>
+      <div><span>全体 / 月</span><b>${fmt(perUser * users)}</b><small>$${(perUser * users).toFixed(2)}</small></div>
+      <div><span>全体 / 年</span><b>${fmt(perUser * users * 12)}</b><small>$${(perUser * users * 12).toFixed(2)}</small></div>`;
+  }
+  ['#simCards', '#simUsers', '#rate'].forEach((s) => $(s).addEventListener('input', renderSim));
+  renderSim();
+
+  $('#csv').addEventListener('click', () => {
+    const cols = ['created_at', 'request_id', 'word', 'step', 'model', 'input_tokens', 'output_tokens', 'thought_tokens', 'image_tokens', 'images', 'cost_usd', 'latency_ms', 'ok', 'error'];
+    const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const csv = '﻿' + [cols.join(','), ...rows.map((r) => cols.map((c) => esc(r[c])).join(','))].join('\r\n');
+    download(`ai_usage_${new Date().toISOString().slice(0, 10)}.csv`, csv, 'text/csv');
+  });
+}
+
 // ---------- 設定 ----------
 async function settings() {
   const s = await data.loadSettings();
@@ -520,6 +809,8 @@ async function settings() {
       <div class="actions" style="margin-top:12px">
         <button class="btn" id="sync">${icon('sync')}今すぐ同期</button>
         <button class="btn" id="import">${icon('upload')}CSV取り込み</button>
+        <a class="btn" href="#/usage">${icon('chart')}AI利用料</a>
+        <a class="btn" href="#/practice">${icon('chat')}会話練習</a>
         <button class="btn ghost danger" id="logout">${icon('logout')}ログアウト</button>
       </div>
     </div>

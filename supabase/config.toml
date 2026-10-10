@@ -1,0 +1,6 @@
+# Supabase CLI 用の最小設定（Edge Function のデプロイにだけ使う）
+project_id = "anki_modoki"
+
+[functions.anki-imagine]
+# ログイン中のユーザーだけが呼べるようにする
+verify_jwt = true

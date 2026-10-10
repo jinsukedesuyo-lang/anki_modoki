@@ -1,5 +1,5 @@
 // オフライン対応: アプリ本体はネット優先（更新をすぐ反映）、画像とライブラリはキャッシュ優先
-const SHELL = 'shell-v2';
+const SHELL = 'shell-v3';
 const RUNTIME = 'runtime-v1';
 const SHELL_FILES = [
   './',
@@ -13,6 +13,7 @@ const SHELL_FILES = [
   'js/lib.js',
   'js/srs.js',
   'js/icons.js',
+  'js/practice.js',
   'icons/icon.svg',
   'icons/icon-192.png',
   'icons/icon-512.png',

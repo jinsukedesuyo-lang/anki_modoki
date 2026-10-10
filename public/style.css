@@ -135,6 +135,7 @@ h2 { font-size: 16px; font-weight: 700; margin: 28px 0 12px; }
   font-weight: 500; white-space: nowrap; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
 }
 .chip.active { background: var(--inverse-bg); color: var(--inverse-text); }
+.chip:disabled { opacity: .5; cursor: progress; }
 .chip b { font-variant-numeric: tabular-nums; }
 
 .hl { color: var(--hl); font-weight: 700; }
@@ -279,6 +280,20 @@ h2 { font-size: 16px; font-weight: 700; margin: 28px 0 12px; }
     padding: 12px 0; background: var(--bg);
   }
 }
+
+/* ===== 会話練習・利用料 ===== */
+.pick-list { display: flex; flex-direction: column; max-height: 280px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+.pick { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.pick:last-child { border-bottom: 0; }
+.pick .w { font-weight: 500; white-space: nowrap; }
+.pick .meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prompt-out { width: 100%; border: 1px solid var(--line); border-radius: 8px; background: var(--chip); padding: 12px; font: 13px/1.6 ui-monospace, Consolas, monospace; resize: vertical; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.kpis > div { background: var(--chip); border-radius: var(--radius); padding: 12px 16px; display: flex; flex-direction: column; }
+.desc .kpis > div { background: var(--bg); }
+.kpis span { color: var(--text2); font-size: 12px; }
+.kpis b { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; margin: 2px 0; }
+.kpis small { color: var(--text2); font-size: 12px; }
 
 /* ===== 設定・ログイン ===== */
 .narrow { max-width: 560px; }
