@@ -163,7 +163,7 @@ async function home() {
       </div>
       ${data.pendingCount() ? `<div class="notice">${icon('sync')}未送信の回答 ${data.pendingCount()} 件。オンラインになると自動で同期されます</div>` : ''}
       ${navigator.onLine ? '' : `<div class="notice">${icon('offline')}オフラインです。前回読み込んだカードで復習できます</div>`}
-      <div class="chips" style="margin-top:12px">
+      <div class="chips wrap" style="margin-top:12px">
         <a class="chip" href="#/new">${icon('add', 18)}カードを追加</a>
         <a class="chip" href="#/practice">${icon('chat', 18)}会話で使ってみる</a>
         <a class="chip" href="#/import">${icon('upload', 18)}CSV取り込み</a>
