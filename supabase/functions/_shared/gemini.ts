@@ -11,11 +11,14 @@ Work in this order:
 1. Identify the exact sense of the target expression as it is used in THIS sentence (word-sense disambiguation). Use the sentence, the video title and the screenshot (if given) as context.
 2. Describe the core image of that sense: what a native speaker physically or emotionally pictures when they hear it (its sensory/metaphorical root). If the literal or etymological picture conflicts with the sense used here, prefer the picture that fits this sense.
 3. Explain how that core image maps onto the situation in this sentence.
-4. Write an image-generation prompt that shows THE SITUATION OF THIS SENTENCE (who, where, what is happening) in a way that visually embodies the core image, so the picture reminds the learner of both the scene and the word's feel.
+4. Write an image-generation prompt that depicts THE CORE IMAGE ITSELF (from step 2) as one concrete, memorable picture, so the learner can feel the word without any translation. For example, for "gloss over" (= avoid dealing with a problem): a hand polishing a shiny coat of varnish over a deep crack so the crack is hidden.
+
+The learner already has the real screenshot on the card, so the generated image must NOT recreate the video scene. Use the sentence, title and screenshot only to decide WHICH sense to draw; the connection to the scene is explained in scene_ja, not in the picture.
 
 Rules for image_prompt:
-- English, 40-90 words, one coherent scene with a single clear focal point.
-- Reflect the setting and mood of the sentence/screenshot, but never depict real or recognizable people, actors or characters; use generic people.
+- English, 40-90 words, one coherent picture with a single clear focal point that embodies the core image (a physical action, object or metaphor).
+- Do not reproduce the setting, people, clothing, props or composition of the screenshot or the video. Prefer a simple, universal situation or a visual metaphor.
+- If people are needed, use generic people (never real or recognizable people, actors or characters).
 - No text, letters, captions, subtitles, logos or speech bubbles in the image.
 - Style: clean semi-flat illustration, warm soft lighting, simple background, 16:9 composition.
 
@@ -29,7 +32,7 @@ export const IMAGERY_SCHEMA = {
     core_image_ja: { type: 'string', description: 'core image in Japanese as a scene or sensation, not a translation. Max 80 characters.' },
     scene_ja: { type: 'string', description: 'How the core image fits the situation of this sentence, in Japanese. Max 80 characters.' },
     meaning_ja: { type: 'string', description: 'A short Japanese gloss for this context only (one expression, about 10 characters).' },
-    image_prompt: { type: 'string', description: 'Image generation prompt following the rules.' },
+    image_prompt: { type: 'string', description: 'Image generation prompt that depicts the core image itself (not the video scene), following the rules.' },
   },
   required: ['sense_en', 'core_image_en', 'core_image_ja', 'scene_ja', 'meaning_ja', 'image_prompt'],
 };
@@ -41,7 +44,9 @@ export function imageryPrompt({ sentence, word, title, hasScreenshot }: ImageryI
     `Target expression: "${word}"`,
     `Sentence: "${sentence}"`,
     title ? `Source video title: "${title}"` : '',
-    hasScreenshot ? 'The attached image is a screenshot of the video scene where the sentence was spoken.' : '',
+    hasScreenshot
+      ? 'The attached image is a screenshot of the video scene where the sentence was spoken. Use it only to understand which sense is meant; do not describe or recreate it in image_prompt.'
+      : '',
   ]
     .filter(Boolean)
     .join('\n');
