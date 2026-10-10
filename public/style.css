@@ -137,6 +137,24 @@ h2 { font-size: 16px; font-weight: 700; margin: 28px 0 12px; }
 }
 .chip.active { background: var(--inverse-bg); color: var(--inverse-text); }
 .chip:disabled { opacity: .5; cursor: progress; }
+
+/* ===== AI 通信中のスピナー ===== */
+.spinner {
+  width: 28px; height: 28px; flex: none; border-radius: 50%;
+  border: 3px solid color-mix(in srgb, currentColor 20%, transparent);
+  border-top-color: var(--red);
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
+.ai-busy { display: flex; align-items: center; gap: 14px; min-height: 48px; }
+.ai-busy .busy-label { font-weight: 500; }
+.ai-busy .meta { font-variant-numeric: tabular-nums; }
+.zone-busy {
+  position: absolute; inset: 0; z-index: 2; cursor: progress;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  background: rgba(0, 0, 0, .6); color: #fff; font-size: 13px; animation: fade .2s ease-out;
+}
 .chip b { font-variant-numeric: tabular-nums; }
 
 .hl { color: var(--hl); font-weight: 700; }

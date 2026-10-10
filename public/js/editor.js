@@ -359,7 +359,8 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
     if (mode === 'full' && !word) return toast('先にセンテンスの単語を色付けしてください');
     const buttons = [$('#aiGen'), $('#aiImg')];
     buttons.forEach((b) => (b.disabled = true));
-    $('#aiCost').textContent = mode === 'full' ? '— 生成中…（10〜40秒）' : '— 画像を作り直し中…';
+    $('#aiCost').textContent = '';
+    const stopBusy = showBusy(mode);
     try {
       const res = await data.generateImagery({
         mode,
@@ -380,8 +381,47 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
       $('#aiCost').textContent = '';
       toast(e.message);
     } finally {
+      stopBusy();
       buttons.forEach((b) => (b.disabled = false));
     }
+  }
+
+  // 通信中の表示: イメージ欄と画像欄にスピナー + 経過秒数
+  // （サーバーから進み具合は届かないので、段階の表示は経過時間による目安）
+  function showBusy(mode) {
+    const started = Date.now();
+    const box = $('#aiResult');
+    const zone = $('#zone-refImage');
+    const label = (sec) =>
+      mode === 'image' ? 'イメージに合わせて画像を描き直しています…' : sec < 8 ? '文脈から意味とイメージを分析しています…' : 'イメージに合わせて画像を描いています…';
+
+    const prevBox = box.innerHTML;
+    if (mode === 'full') {
+      box.innerHTML = `<div class="ai-busy" role="status" aria-live="polite">
+        <span class="spinner" aria-hidden="true"></span>
+        <div><div class="busy-label">${label(0)}</div><div class="meta"><span class="busy-sec">0</span> 秒 · ふつう 10〜40 秒</div></div>
+      </div>`;
+    }
+    const overlay = document.createElement('div');
+    overlay.className = 'zone-busy';
+    overlay.innerHTML = `<span class="spinner" aria-hidden="true"></span><span>画像を生成中…</span>`;
+    overlay.addEventListener('click', (e) => e.stopPropagation()); // 生成中にファイル選択を開かない
+    zone.append(overlay);
+
+    const timer = setInterval(() => {
+      const sec = Math.floor((Date.now() - started) / 1000);
+      const secEl = box.querySelector('.busy-sec');
+      if (secEl) secEl.textContent = sec;
+      const labelEl = box.querySelector('.busy-label');
+      if (labelEl) labelEl.textContent = label(sec);
+    }, 1000);
+
+    return () => {
+      clearInterval(timer);
+      overlay.remove();
+      if (mode === 'full' && box.querySelector('.ai-busy')) box.innerHTML = prevBox;
+      renderImagery();
+    };
   }
   $('#aiGen').addEventListener('click', () => runAi('full'));
   $('#aiImg').addEventListener('click', () => runAi('image'));
