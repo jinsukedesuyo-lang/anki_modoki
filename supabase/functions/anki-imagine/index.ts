@@ -145,7 +145,7 @@ Deno.serve(async (req) => {
             model: TEXT_MODEL,
             system_instruction: IMAGERY_SYSTEM,
             input,
-            response_format: { type: 'json_schema', json_schema: { name: 'Imagery', schema: IMAGERY_SCHEMA } },
+            response_format: { type: 'text', mime_type: 'application/json', schema: IMAGERY_SCHEMA },
             generation_config: { thinking_level: TEXT_THINKING, max_output_tokens: 2048 },
           }),
         () => false,
