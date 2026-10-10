@@ -6,7 +6,24 @@ import {
   extractImage,
   parseJsonText,
   imageryPrompt,
+  imageRequest,
+  imageryRequest,
 } from '../supabase/functions/_shared/gemini.ts';
+
+test('画像リクエストには「文字なし」の一文が必ず付く', () => {
+  const r = imageRequest('m', 'A hand pours liquid into a clay figure.  ');
+  assert.match(r.input[0].text, /^A hand pours liquid into a clay figure\. Absolutely no text/);
+  assert.equal(r.response_format.type, 'image');
+});
+
+test('分析リクエスト: JSON 出力の指定と、スクショがあれば画像を添付', () => {
+  const r = imageryRequest('m', 'low', { sentence: 's', word: 'w' }, { data: 'AAA' });
+  assert.deepEqual(r.response_format.type, 'text');
+  assert.equal(r.response_format.mime_type, 'application/json');
+  assert.equal(r.input.length, 2);
+  assert.match(r.input[0].text, /only to understand which sense/);
+  assert.equal(imageryRequest('m', 'low', { sentence: 's', word: 'w' }, null).input.length, 1);
+});
 
 const TEXT = { input: 0.3, output: 2.5 };
 const IMAGE = { input: 0.25, output: 1.5, imageOutput: 30 };

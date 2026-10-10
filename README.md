@@ -205,7 +205,13 @@ export const SUPABASE_ANON_KEY = 'eyJ...（または sb_publishable_...）';
 npm run dev    # http://localhost:8080/ で確認（ビルド不要）
 npm test       # 復習間隔の計算・文字列処理のテスト
 npm run icons  # アイコン PNG を再生成
+
+# AI イメージ生成のプロンプトを手元で試す（本番と同じリクエスト。単語を * で囲む）
+node scripts/try-imagery.mjs "we wanted a child to *embody* the love we felt"          # 分析だけ（約0.3円）
+node scripts/try-imagery.mjs "we wanted a child to *embody* the love we felt" --image  # 画像も tmp/ に保存（約5円）
 ```
+
+AI への指示文は [`supabase/functions/_shared/gemini.ts`](supabase/functions/_shared/gemini.ts) の `IMAGERY_SYSTEM` です。直したら上のスクリプトで試し、よければ `npx supabase functions deploy anki-imagine --use-api` で反映します。スクリプトの呼び出しはアプリを通らないので、AI利用料の画面には記録されません。
 
 | パス | 内容 |
 |---|---|

@@ -8,19 +8,27 @@ export const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta
 export const IMAGERY_SYSTEM = `You help Japanese learners of English acquire the mental image a native English speaker has for a word or phrase, instead of a Japanese dictionary translation.
 
 Work in this order:
-1. Identify the exact sense of the target expression as it is used in THIS sentence (word-sense disambiguation). Use the sentence, the video title and the screenshot (if given) as context.
-2. Describe the core image of that sense: what a native speaker physically or emotionally pictures when they hear it (its sensory/metaphorical root). If the literal or etymological picture conflicts with the sense used here, prefer the picture that fits this sense.
-3. Explain how that core image maps onto the situation in this sentence.
-4. Write an image-generation prompt that depicts THE CORE IMAGE ITSELF (from step 2) as one concrete, memorable picture, so the learner can feel the word without any translation. For example, for "gloss over" (= avoid dealing with a problem): a hand polishing a shiny coat of varnish over a deep crack so the crack is hidden.
+1. Identify the exact sense of the target expression as it is used in THIS sentence (word-sense disambiguation). Use the sentence, the video title and the screenshot (if given) only for this.
+2. Find the core image of that sense: the physical action, movement, shape or force a native speaker feels underneath the word. Use the word's parts and origin when they help (e.g. em- "into" + body → "put something formless into a body"; de- "away" + flect "bend" → "bend something away from you"). If the literal origin conflicts with this sense, use the picture that fits this sense.
+3. Explain how that core image maps onto the situation in this sentence (scene_ja). This is the ONLY place where the sentence's topic appears.
+4. Design a visual metaphor that shows the MECHANISM of the word with concrete, everyday objects:
+   - Abstract away the sentence's own topic. Do NOT draw the sentence's subjects or objects (people, feelings, relationships, places in the sentence). Replace them with neutral stand-ins (e.g. a shapeless glowing liquid, a clay figure, a ball, a box, a hand, a plant).
+   - The picture must show the action or change the word expresses, not a mood. Prefer a literal, physical demonstration.
+   - Self-check: could a native speaker who sees only the picture guess this word or a very close synonym? If not, choose a more literal metaphor.
+   Examples:
+   - "gloss over" (avoid dealing with a problem): a hand brushing a thick shiny coat of varnish over a deep crack in a wooden table so the crack disappears.
+   - "embody" (give a physical form to an idea or quality): a stream of colorful, shapeless mist being poured from a jar into a hollow clay figure; the part already filled has become solid and colorful.
+5. Write image_prompt describing exactly that picture.
 
-The learner already has the real screenshot on the card, so the generated image must NOT recreate the video scene. Use the sentence, title and screenshot only to decide WHICH sense to draw; the connection to the scene is explained in scene_ja, not in the picture.
+The learner already has the real screenshot on the card, so the image must NOT recreate the video scene or the sentence's situation.
 
 Rules for image_prompt:
-- English, 40-90 words, one coherent picture with a single clear focal point that embodies the core image (a physical action, object or metaphor).
-- Do not reproduce the setting, people, clothing, props or composition of the screenshot or the video. Prefer a simple, universal situation or a visual metaphor.
-- If people are needed, use generic people (never real or recognizable people, actors or characters).
-- No text, letters, captions, subtitles, logos or speech bubbles in the image.
-- Style: clean semi-flat illustration, warm soft lighting, simple background, 16:9 composition.
+- English, 40-90 words. Name the concrete objects, the action, and where they are placed in the frame.
+- One clear focal point, readable at thumbnail size. If the word describes a change or process, a two-part composition (before on the left → after on the right, joined by a simple arrow) is allowed.
+- Never depict the sentence's own topic, the screenshot's setting, people, clothing or props. If a person is needed, show only generic hands or a simple generic figure (never real or recognizable people, actors or characters).
+- Do not use glowing auras, sparkles, light swirls, silhouettes, dreamy or symbolic imagery (hearts, light beams); they hide the mechanism.
+- No text, letters, numbers, captions, subtitles, logos or speech bubbles.
+- Style: simple storybook-style flat vector illustration with clear outlines, solid colors, plain light background, even lighting, 16:9. Do not call it a diagram, infographic or dictionary illustration (that invites labels).
 
 Japanese fields must sound natural to a Japanese reader and describe a picture or feeling, not list dictionary equivalents.`;
 
@@ -32,9 +40,10 @@ export const IMAGERY_SCHEMA = {
     core_image_ja: { type: 'string', description: 'core image in Japanese as a scene or sensation, not a translation. Max 80 characters.' },
     scene_ja: { type: 'string', description: 'How the core image fits the situation of this sentence, in Japanese. Max 80 characters.' },
     meaning_ja: { type: 'string', description: 'A short Japanese gloss for this context only (one expression, about 10 characters).' },
-    image_prompt: { type: 'string', description: 'Image generation prompt that depicts the core image itself (not the video scene), following the rules.' },
+    visual_metaphor: { type: 'string', description: 'The concrete objects and action chosen in step 4, without the sentence topic. Max 30 words.' },
+    image_prompt: { type: 'string', description: 'Image generation prompt that depicts the visual metaphor (not the sentence topic or video scene), following the rules.' },
   },
-  required: ['sense_en', 'core_image_en', 'core_image_ja', 'scene_ja', 'meaning_ja', 'image_prompt'],
+  required: ['sense_en', 'core_image_en', 'core_image_ja', 'scene_ja', 'meaning_ja', 'visual_metaphor', 'image_prompt'],
 };
 
 export type ImageryInput = { sentence: string; word: string; title?: string; hasScreenshot?: boolean };
@@ -50,6 +59,34 @@ export function imageryPrompt({ sentence, word, title, hasScreenshot }: ImageryI
   ]
     .filter(Boolean)
     .join('\n');
+}
+
+// ---------- リクエスト（Edge Function とお試しスクリプトで共通） ----------
+
+type Screenshot = { mime_type?: string; data: string } | null | undefined;
+
+export function imageryRequest(model: string, thinking: string, input: ImageryInput, screenshot?: Screenshot) {
+  const content: any[] = [{ type: 'text', text: imageryPrompt({ ...input, hasScreenshot: !!screenshot?.data }) }];
+  if (screenshot?.data) content.push({ type: 'image', mime_type: screenshot.mime_type || 'image/jpeg', data: screenshot.data });
+  return {
+    model,
+    system_instruction: IMAGERY_SYSTEM,
+    input: content,
+    response_format: { type: 'text', mime_type: 'application/json', schema: IMAGERY_SCHEMA },
+    generation_config: { thinking_level: thinking, max_output_tokens: 2048 },
+  };
+}
+
+// 画像に文字が入ると「単語を絵で感じる」目的を壊すので、指示文の書き忘れに関係なく必ず付け足す
+export const IMAGE_SUFFIX =
+  ' Absolutely no text anywhere in the image: no words, letters, labels, captions, numbers or signs. Communicate only with objects and action.';
+
+export function imageRequest(model: string, prompt: string) {
+  return {
+    model,
+    input: [{ type: 'text', text: prompt.trim() + IMAGE_SUFFIX }],
+    response_format: { type: 'image', mime_type: 'image/jpeg', aspect_ratio: '16:9', image_size: '1K' },
+  };
 }
 
 // ---------- 応答の読み取り ----------

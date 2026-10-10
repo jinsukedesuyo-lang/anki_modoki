@@ -3,9 +3,8 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import {
   GEMINI_ENDPOINT,
-  IMAGERY_SCHEMA,
-  IMAGERY_SYSTEM,
-  imageryPrompt,
+  imageryRequest,
+  imageRequest,
   extractText,
   extractImage,
   parseJsonText,
@@ -134,20 +133,11 @@ Deno.serve(async (req) => {
     if (mode === 'full') {
       if (!word || !sentence) return reply(400, { error: '単語とセンテンスが必要です' });
       const shot = body.screenshot?.data ? body.screenshot : null;
-      const input: any[] = [{ type: 'text', text: imageryPrompt({ sentence, word, title, hasScreenshot: !!shot }) }];
-      if (shot) input.push({ type: 'image', mime_type: shot.mime_type || 'image/jpeg', data: shot.data });
       imagery = await run(
         'concept',
         TEXT_MODEL,
         TEXT_PRICE,
-        () =>
-          interact({
-            model: TEXT_MODEL,
-            system_instruction: IMAGERY_SYSTEM,
-            input,
-            response_format: { type: 'text', mime_type: 'application/json', schema: IMAGERY_SCHEMA },
-            generation_config: { thinking_level: TEXT_THINKING, max_output_tokens: 2048 },
-          }),
+        () => interact(imageryRequest(TEXT_MODEL, TEXT_THINKING, { sentence, word, title }, shot)),
         () => false,
         (json) => parseJsonText(extractText(json)),
       );
@@ -160,12 +150,7 @@ Deno.serve(async (req) => {
       'image',
       IMAGE_MODEL,
       IMAGE_PRICE,
-      () =>
-        interact({
-          model: IMAGE_MODEL,
-          input: [{ type: 'text', text: prompt }],
-          response_format: { type: 'image', mime_type: 'image/jpeg', aspect_ratio: '16:9', image_size: '1K' },
-        }),
+      () => interact(imageRequest(IMAGE_MODEL, prompt)),
       (json) => !!extractImage(json),
       (json) => {
         const img = extractImage(json);
