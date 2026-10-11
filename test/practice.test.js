@@ -16,7 +16,9 @@ const cards = [
 test('対象の表現・文脈・イメージが入り、HTML タグは残らない', () => {
   const p = buildPracticePrompt({ cards, mode: 'roleplay', level: 'B1' });
   assert.match(p, /1\. "gloss over" — meaning here: to avoid talking about a problem — native image: polishing a shiny layer over a crack — where I met it: "He tried to gloss over the mistake\." \(The Office\)/);
-  assert.match(p, /2\. "sugarcoat" — meaning \(Japanese\): オブラートに包む/);
+  // 英語の語義が無いカードは、日本語メモを「不正確かもしれない参考」として渡し、意味は文脈から判断させる
+  assert.match(p, /2\. "sugarcoat" — meaning: judge it from the sentence below \(my Japanese note, may be inaccurate: オブラートに包む\)/);
+  assert.match(p, /always use the sense that fits the sentence/);
   assert.doesNotMatch(p, /<span/);
   assert.match(p, /Mode: role-play/);
   assert.match(p, /Don't say it before I try/);
@@ -34,6 +36,31 @@ test('つまずいたときの3つのルールが入る', () => {
   assert.match(p, /Unnatural sentence.*do NOT move on.*say the better version myself/s);
   // 以前の「答えは聞かれたときだけ」は残っていない
   assert.doesNotMatch(p, /Give the answer only if I ask/);
+});
+
+test('語数と進捗の案内（◯個目 / 全◯個）が入る', () => {
+  const p = buildPracticePrompt({ cards, mode: 'roleplay' });
+  assert.match(p, /TARGET EXPRESSIONS \(2 in total\)/);
+  assert.match(p, /PROGRESS/);
+  assert.match(p, /We have 2 expressions today/);
+  assert.match(p, /number 2 of 2/);
+  assert.match(p, /Count in the order we practice/);
+});
+
+test('ヒントでも出てこなければ答えを教えて先へ進む（ループしない）', () => {
+  assert.match(buildPracticePrompt({ cards, mode: 'retrieval' }), /If I still miss it after the hint, tell me the expression and its meaning, and go on to step \(2\)/);
+  assert.match(buildPracticePrompt({ cards, mode: 'questions' }), /If I still miss it after the hint.*ask me to use it in my own sentence/);
+});
+
+test('◎△× は「自分の文で使えたか」で判定する', () => {
+  const p = buildPracticePrompt({ cards });
+  assert.match(p, /◎ ヒントも例文もなしで自分の文に使えた/);
+  assert.match(p, /× 最後まで自分の文で使えなかった/);
+});
+
+test('音声モードでも、最後のレポートでは表を使ってよい', () => {
+  assert.match(buildPracticePrompt({ cards, voice: true }), /voice-only rules no longer apply here/);
+  assert.doesNotMatch(buildPracticePrompt({ cards, voice: false }), /voice-only rules/);
 });
 
 test('音声会話モードでは記号・表を使わない指示になる', () => {

@@ -43,8 +43,11 @@ export const LEVELS = {
 function describeCard(c, i) {
   const im = c.imagery ?? {};
   const parts = [`${i + 1}. "${c.word || stripHtml(c.sentence)}"`];
+  // 英語の語義（AI イメージ生成で作ったもの）を優先。無ければ日本語メモは「参考」として渡し、
+  // 誤訳がそのまま会話に持ち込まれないよう、意味は文脈から判断させる
   if (im.sense_en) parts.push(`meaning here: ${im.sense_en}`);
-  else if (c.meaning) parts.push(`meaning (Japanese): ${c.meaning}`);
+  else if (c.meaning) parts.push(`meaning: judge it from the sentence below (my Japanese note, may be inaccurate: ${c.meaning})`);
+  else parts.push('meaning: judge it from the sentence below');
   if (im.core_image_en) parts.push(`native image: ${im.core_image_en}`);
   const where = c.source?.title ? ` (${c.source.title})` : '';
   parts.push(`where I met it: "${stripHtml(c.sentence)}"${where}`);
@@ -56,20 +59,28 @@ function describeCard(c, i) {
  */
 export function buildPracticePrompt({ cards, mode = 'retrieval', level = 'B1', voice = false }) {
   const m = MODES[mode] ?? MODES.retrieval;
+  const n = cards.length;
   const fix = voice ? 'Say "Better:" and the natural version' : 'Show the natural version as "✔ Better: ..."';
+  const afterMiss = mode === 'retrieval' ? 'go on to step (2)' : 'ask me to use it in my own sentence';
   return `You are my English conversation partner and coach. I am a Japanese learner of English (level ${LEVELS[level] ?? level}) who learns vocabulary from YouTube videos. I recently studied the expressions below. Your job is to make me USE them myself, so they move from "I recognize it" to "I can say it".
 
-TARGET EXPRESSIONS
+TARGET EXPRESSIONS (${n} in total)
 ${cards.map(describeCard).join('\n')}
 
 HOW TO RUN THE SESSION
 ${m.text}
 
+PROGRESS
+- At the very start, tell me how many expressions we will practice today, in one short sentence (e.g. "We have ${n} expressions today. Let's start!").
+- Each time you start a new expression, say which number it is, briefly and naturally (e.g. "Okay, number 2 of ${n}." / "Last one, number ${n} of ${n}."). Count in the order we practice, not the list order.
+- When all expressions are done, say so (e.g. "That's all ${n}!"). Before the review of difficult expressions, say it is review time.
+
 RULES
 - Speak only English during the session. Keep each of your turns short (1-3 sentences) and natural, like real conversation.${voice ? '\n- This is a spoken (voice) conversation: no lists, tables, emojis or markdown.' : ''}
 - Practice one expression at a time, in a mixed order (not the list order). Use situations different from where I met each expression, but keep the same meaning.
+- If a meaning is marked as my Japanese note, it may be inaccurate: always use the sense that fits the sentence where I met the expression.
 - Create situations or questions that make me need the expression. Don't say it before I try, unless one of the rules below tells you to.
-- If I don't come up with the expression, give me ONE short hint (the situation, the native image, or the first letter), then let me try again.
+- If I don't come up with the expression, give me ONE short hint (the situation, the native image, or the first letter), then let me try again. If I still miss it after the hint, tell me the expression and its meaning, and ${afterMiss}.
 
 WHEN I'M STUCK OR MAKE MISTAKES (these rules always win)
 1. "I don't understand": if I say "I don't understand", "I don't know", "I can't", "What?", "わからない" or similar, stop hinting and answer IMMEDIATELY in very simple English: explain what you meant, and if it's about a target expression, tell me the expression and its meaning right away. Then ask me again in an easier way.
@@ -80,8 +91,9 @@ WHEN I'M STUCK OR MAKE MISTAKES (these rules always win)
 - Start right away with the first situation. Don't repeat these instructions.
 
 WHEN I SAY "finish"
-Write a short report in Japanese:
-- 表: 表現 / 使えたか（◎ 自力で使えた・△ ヒントで使えた・× 使えなかった）/ 私が言った文 / より自然な言い方
+Write a short report in Japanese${voice ? ' (the voice-only rules no longer apply here)' : ''}:
+- 表: 表現 / 使えたか / 私が言った文 / より自然な言い方
+- 「使えたか」の判定は、自分の文で使えたかで決める: ◎ ヒントも例文もなしで自分の文に使えた・△ ヒントや例文の後に使えた・× 最後まで自分の文で使えなかった
 - 次に意識すること（1〜2行）
 - 最後の行はこの形式そのままで: RESULT: ${cards.map((c) => `${c.word || '...'}=◎`).slice(0, 2).join(', ')}, ...`;
 }
