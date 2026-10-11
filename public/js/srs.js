@@ -77,8 +77,9 @@ function dueInDays(now, days, settings) {
 export function answer(cardId, srs, rating, now, settings = DEFAULT_SETTINGS) {
   const s = { ...srs };
   const good = rating === 'good';
+  const wasNew = s.state === 'new';
 
-  if (s.state === 'new') s.state = 'learning';
+  if (wasNew) s.state = 'learning';
 
   if (s.state === 'learning' || s.state === 'relearning') {
     const steps = s.state === 'learning' ? settings.learningSteps : settings.relearningSteps;
@@ -92,9 +93,16 @@ export function answer(cardId, srs, rating, now, settings = DEFAULT_SETTINGS) {
       } else {
         s.due = now + steps[s.step] * MIN;
       }
-    } else {
+    } else if (wasNew) {
+      // 新規カードの最初の Again: その日のうちにもう一度出す
       s.step = 0;
       s.due = now + steps[0] * MIN;
+    } else {
+      // 同じ日の2回目以降の Again: 覚えるまで無限に出続けないよう、翌日に回す（間隔は1日）
+      s.state = 'review';
+      s.step = 0;
+      s.interval = 1;
+      s.due = dueInDays(now, 1, settings);
     }
   } else if (s.state === 'review') {
     if (good) {

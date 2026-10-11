@@ -22,14 +22,36 @@ test('新規 → Again は10分後に再出題、その後 Good で卒業', () =
   assert.equal(s.interval, 1);
 });
 
-test('学習ステップを複数にした場合は従来どおり段階を踏む', () => {
+test('学習ステップを複数にした場合は段階を踏む（途中の Again は翌日へ）', () => {
   const S2 = { ...S, learningSteps: [1, 10] };
   let s = answer('a', newSrs(), 'good', t0, S2);
   assert.equal(s.state, 'learning');
   assert.equal(s.due, t0 + 10 * MIN);
   s = answer('a', s, 'again', t0 + MIN, S2);
-  assert.equal(s.step, 0);
-  assert.equal(s.due, t0 + 2 * MIN);
+  assert.equal(s.state, 'review');
+  assert.equal(s.due, dayStart(t0) + DAY);
+});
+
+test('新規カード: 同じ日の2回目の Again は翌日に回る（無限に出続けない）', () => {
+  let s = answer('a', newSrs(), 'again', t0);
+  assert.equal(s.due, t0 + 10 * MIN); // 1回目はその日のうちに再出題
+  s = answer('a', s, 'again', t0 + 10 * MIN);
+  assert.equal(s.state, 'review');
+  assert.equal(s.interval, 1);
+  assert.equal(s.due, dayStart(t0) + DAY);
+});
+
+test('復習カード: Again で再学習 → もう一度 Again なら翌日に回る', () => {
+  let s = { ...newSrs(), state: 'review', interval: 20, due: t0, reps: 5, ease: 2.5 };
+  s = answer('a', s, 'again', t0);
+  assert.equal(s.state, 'relearning');
+  assert.equal(s.due, t0 + 10 * MIN);
+  s = answer('a', s, 'again', t0 + 10 * MIN);
+  assert.equal(s.state, 'review');
+  assert.equal(s.interval, 1);
+  assert.equal(s.due, dayStart(t0) + DAY);
+  assert.equal(s.lapses, 1); // 同じ日の2回目では lapses と ease をさらに下げない
+  assert.equal(s.ease, 2.3);
 });
 
 test('復習の Good は間隔 × ease で伸びる', () => {
