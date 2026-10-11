@@ -147,7 +147,8 @@ export async function saveCard(input, existing = null) {
   const sentence = sanitizeSentence(input.sentence);
   if (!sentence.replace(/<[^>]*>/g, '').trim()) throw new Error('センテンスが空です');
 
-  const resolve = async (v) => (v && v.blob ? uploadImage(v.blob) : v || null);
+  // { blob } = 新しい画像（アップロード） / 文字列 or { path } = アップロード済み / null = なし
+  const resolve = async (v) => (v?.blob ? uploadImage(v.blob) : typeof v === 'string' ? v : v?.path ?? null);
   const image = await resolve(input.image);
   const refImage = await resolve(input.refImage);
 

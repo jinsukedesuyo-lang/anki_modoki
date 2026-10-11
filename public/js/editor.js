@@ -144,7 +144,10 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
 
         <div class="actions sticky">
           <button class="btn primary" id="save">保存 <span class="kbd">Ctrl+Enter</span></button>
-          ${isNew ? '' : `<button class="btn" id="reset">${icon('replay')}学習をリセット</button><span class="spacer"></span><button class="btn ghost danger" id="del">${icon('trash')}削除</button>`}
+          <span class="meta" id="autosave"></span>
+          <span class="spacer"></span>
+          ${isNew ? '' : `<button class="btn" id="reset">${icon('replay')}学習をリセット</button>`}
+          <button class="btn ghost danger" id="del" ${isNew ? 'hidden' : ''}>${icon('trash')}${isNew ? '破棄' : '削除'}</button>
         </div>
       </div>
 
@@ -162,6 +165,7 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
   let activeZone = 'image';
   let lastWord = '';
   let imagery = card?.imagery ?? null; // AI が作ったイメージ（保存時にカードへ入る）
+  let current = card; // 保存済みの最新状態（新規でも自動保存したらここに入り、以降は上書き）
 
   // ----- センテンス -----
   if (card) {
@@ -315,6 +319,7 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
       if (v && v.url) URL.revokeObjectURL(v.url);
       images[key] = null;
       drawZone(key);
+      if (current) autoSave(); // 保存済みのカードなら、外したことも反映しておく
     });
   }
 
@@ -371,8 +376,9 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
         imagery: mode === 'image' ? imagery : undefined,
       });
       imagery = res.imagery;
-      await setImage('refImage', await dataUrlToBlob(`data:${res.image.mime_type};base64,${res.image.data}`));
+      // 意味を先に入れてから画像をセット（画像セット時の自動保存に意味とイメージも含める）
       if (!meaningEl.value.trim() && imagery.meaning_ja) meaningEl.value = imagery.meaning_ja;
+      await setImage('refImage', await dataUrlToBlob(`data:${res.image.mime_type};base64,${res.image.data}`));
       const usd = res.usage?.cost_usd ?? 0;
       $('#aiCost').textContent = `— 今回 $${usd.toFixed(4)}（約 ${(usd * data.usdJpy()).toFixed(2)} 円）`;
       renderImagery();
@@ -436,7 +442,9 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
       drawZone(key);
     } catch {
       toast('画像を読み込めませんでした');
+      return;
     }
+    autoSave(); // 保存ボタンの押し忘れ対策: 画像が入った時点で一時保存
   }
 
   for (const key of ['image', 'refImage']) {
@@ -489,7 +497,55 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
   // 拡張機能から渡されたスクショ
   if (capture?.image) dataUrlToBlob(capture.image).then((b) => setImage('image', b));
 
-  // ----- 保存 / 削除 -----
+  // ----- 保存 / 自動保存 / 削除 -----
+  // 保存は1件ずつ順番に（自動保存と保存ボタンが重なっても、同じカードを二重に作らない）
+  let chain = Promise.resolve();
+  const queue = (fn) => {
+    const p = chain.then(fn);
+    chain = p.catch(() => {});
+    return p;
+  };
+
+  async function persist() {
+    const saved = await data.saveCard(
+      {
+        sentence: sanitizeSentence(sentenceEl.innerHTML),
+        meaning: meaningEl.value,
+        image: images.image,
+        refImage: images.refImage,
+        source,
+        imagery,
+      },
+      current,
+    );
+    current = saved;
+    // アップロード済みになった画像は、表示用の URL を残したままパスで持つ（次の保存で再アップロードしない）
+    for (const key of ['image', 'refImage']) {
+      const v = images[key];
+      if (v?.blob && saved[key]) images[key] = { path: saved[key], url: v.url };
+    }
+    $('#del').hidden = false;
+    return saved;
+  }
+
+  function autoSave() {
+    const status = $('#autosave');
+    if (!stripHtml(sanitizeSentence(sentenceEl.innerHTML))) {
+      status.textContent = 'センテンスを入れると自動保存されます';
+      return;
+    }
+    status.textContent = '自動保存中…';
+    queue(persist)
+      .then(() => {
+        const t = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+        status.textContent = `自動保存しました ${t}`;
+      })
+      .catch((e) => {
+        status.textContent = '';
+        toast(`自動保存に失敗しました: ${e.message}`);
+      });
+  }
+
   let saving = false;
   async function save() {
     if (saving) return;
@@ -499,11 +555,8 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
     saving = true;
     $('#save').disabled = true;
     try {
-      const saved = await data.saveCard(
-        { sentence, meaning: meaningEl.value, image: images.image, refImage: images.refImage, source, imagery },
-        card
-      );
-      toast(isNew ? `「${saved.word || '新しいカード'}」を追加しました` : '保存しました');
+      const saved = await queue(persist);
+      toast(isNew ? `「${saved.word || '新しいカード'}」を保存しました` : '保存しました');
       onSaved(saved);
     } catch (e) {
       toast(`保存に失敗しました: ${e.message}`);
@@ -517,14 +570,17 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
 
   $('#reset')?.addEventListener('click', async () => {
     if (!confirm('このカードを未学習の状態に戻しますか？')) return;
-    await data.resetCard(card);
+    await data.resetCard(current);
     toast('リセットしました');
   });
-  $('#del')?.addEventListener('click', async () => {
-    if (!confirm('このカードを削除しますか？')) return;
-    await data.deleteCard(card);
-    toast('削除しました');
-    onDeleted?.();
+  $('#del').addEventListener('click', async () => {
+    if (!current) return;
+    if (!confirm(isNew ? '自動保存したこのカードを破棄しますか？' : 'このカードを削除しますか？')) return;
+    await chain; // 自動保存の途中なら終わるのを待ってから消す
+    await data.deleteCard(current);
+    toast(isNew ? '破棄しました' : '削除しました');
+    if (onDeleted) onDeleted();
+    else onSaved(null); // 新規画面: 空のフォームに戻す
   });
 
   function onKey(e) {
