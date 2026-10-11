@@ -197,6 +197,8 @@ async function review() {
   let answered = 0;
   let waitTimer = null;
   let ccOn = localStorage.getItem('am:cc') !== 'off';
+  // 表面でもスクショを見せて、情景とセリフを結びつける（初期値オン。端末ごとに保存）
+  let sceneOnFront = localStorage.getItem('am:sceneFront') !== 'off';
 
   const remaining = () => cards.filter((c) => c.srs.state === 'new' || isLearning(c) || (c.srs.state === 'review' && c.srs.due < dayEnd));
 
@@ -251,7 +253,7 @@ async function review() {
     const now = Date.now();
     const rest = remaining();
     const pct = Math.round((answered / (answered + rest.length || 1)) * 100);
-    const showImg = showing && c.image;
+    const showImg = c.image && (showing || sceneOnFront);
     const src = c.source?.url ? `<a class="chip" href="${escapeHtml(c.source.url)}" target="_blank" rel="noopener">${icon('open', 18)}元の動画</a>` : '';
 
     view.innerHTML = `<div class="watch">
@@ -272,6 +274,7 @@ async function review() {
       </div>
       <div class="chips">
         <button class="chip" id="speak">${icon('volume', 18)}読み上げ</button>
+        ${!showing && c.image ? `<button class="chip ${sceneOnFront ? 'active' : ''}" id="scene">${icon('image', 18)}表で場面を見る</button>` : ''}
         ${showing ? `<button class="chip ${ccOn ? 'active' : ''}" id="cc">${icon('cc', 18)}字幕</button>${src}<a class="chip" href="#/edit/${c.id}">${icon('edit', 18)}編集</a>` : ''}
       </div>
       ${showing && (c.refImage || c.imagery?.core_image_ja)
@@ -295,6 +298,12 @@ async function review() {
     view.querySelector('#again')?.addEventListener('click', () => rate('again'));
     view.querySelector('#good')?.addEventListener('click', () => rate('good'));
     view.querySelector('#speak').addEventListener('click', () => speak(c));
+    view.querySelector('#scene')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      sceneOnFront = !sceneOnFront;
+      localStorage.setItem('am:sceneFront', sceneOnFront ? 'on' : 'off');
+      draw();
+    });
     view.querySelector('#cc')?.addEventListener('click', () => {
       ccOn = !ccOn;
       localStorage.setItem('am:cc', ccOn ? 'on' : 'off');
