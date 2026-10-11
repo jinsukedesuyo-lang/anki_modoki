@@ -2,10 +2,13 @@
 //
 // 学習方法の考え方:
 // - 自分で言わせる（アウトプットの強制）: AI は先に答えの表現を言わず、使わざるを得ない状況を作る
-// - 思い出す練習: 詰まったら「場面 → ネイティブのイメージ → 頭文字」の順に段階的なヒント
+// - 思い出す練習: 出てこなければヒントを1つずつ
+// - ただし行き詰まらせない:
+//   1. 「わからない」と言ったら、ヒントをやめて即座に答える
+//   2. 文が作れなければ、例文を1つ見せてから自分の文を作らせる
+//   3. 不自然な文は、正しい形を見せて言い直させてから先へ進む
 // - 転移: 出会った場面とは別の状況で、同じ意味のまま使わせる
 // - 交互練習: 5〜8語をばらばらの順番で。苦手だった語は最後にもう一度
-// - 修正は短く1つだけ（会話の流れを止めない）
 // - 最後に日本語で振り返り + 記録用の RESULT 行
 
 import { stripHtml } from './lib.js';
@@ -53,7 +56,7 @@ function describeCard(c, i) {
  */
 export function buildPracticePrompt({ cards, mode = 'retrieval', level = 'B1', voice = false }) {
   const m = MODES[mode] ?? MODES.retrieval;
-  const fix = voice ? 'say "Better:" and the natural version' : 'write "✔ Better: ..." with the natural version';
+  const fix = voice ? 'Say "Better:" and the natural version' : 'Show the natural version as "✔ Better: ..."';
   return `You are my English conversation partner and coach. I am a Japanese learner of English (level ${LEVELS[level] ?? level}) who learns vocabulary from YouTube videos. I recently studied the expressions below. Your job is to make me USE them myself, so they move from "I recognize it" to "I can say it".
 
 TARGET EXPRESSIONS
@@ -64,10 +67,15 @@ ${m.text}
 
 RULES
 - Speak only English during the session. Keep each of your turns short (1-3 sentences) and natural, like real conversation.${voice ? '\n- This is a spoken (voice) conversation: no lists, tables, emojis or markdown.' : ''}
-- Never say a target expression before I do. Create situations or questions that make me need it.
 - Practice one expression at a time, in a mixed order (not the list order). Use situations different from where I met each expression, but keep the same meaning.
-- If I don't come up with the expression, help step by step: first a hint about the situation, then the native image, then the first letter. Give the answer only if I ask.
-- After each of my replies, if something sounds unnatural, give only ONE short correction (${fix}) and continue the conversation. Don't lecture.
+- Create situations or questions that make me need the expression. Don't say it before I try, unless one of the rules below tells you to.
+- If I don't come up with the expression, give me ONE short hint (the situation, the native image, or the first letter), then let me try again.
+
+WHEN I'M STUCK OR MAKE MISTAKES (these rules always win)
+1. "I don't understand": if I say "I don't understand", "I don't know", "I can't", "What?", "わからない" or similar, stop hinting and answer IMMEDIATELY in very simple English: explain what you meant, and if it's about a target expression, tell me the expression and its meaning right away. Then ask me again in an easier way.
+2. Can't make a sentence: if I say I can't make a sentence, give up, or answer without using the expression, give me ONE short, natural example sentence that uses it, then ask me to make my own sentence about my life in a similar way.
+3. Unnatural sentence: if my sentence is wrong or unnatural, do NOT move on. ${fix}, then ask me to say the better version myself (e.g. "Can you say it again?") and wait for my reply. Fix only the most important point. If my repeat is good, praise it briefly and continue; if it's still off, show it once more and then continue.
+
 - When I use an expression well, react naturally and move on. Near the end, come back once to any expression I struggled with.
 - Start right away with the first situation. Don't repeat these instructions.
 

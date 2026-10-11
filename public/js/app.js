@@ -579,7 +579,9 @@ async function practice() {
     <div class="desc" style="margin-top:16px;font-size:13px;line-height:1.8">
       <div class="head">使い方のコツ</div>
       ・音声で話すなら「音声で話す」をオンにして、ChatGPT や Gemini アプリの音声モードで貼り付けてから話しかけます<br>
-      ・詰まってもすぐ答えを聞かず、ヒントで思い出すほうが定着します<br>
+      ・わからないときは <b>I don't understand</b>（または「わからない」）と言えば、すぐに答えを教えてくれます<br>
+      ・文が作れないときは <b>I can't make a sentence</b> と言えば、例文を見せてくれます<br>
+      ・不自然な文は正しい形を教えてくれるので、<b>声に出して言い直して</b>から次へ進みます<br>
       ・最後に <b>finish</b> と言うと、日本語の振り返り（自力で使えた / ヒントで使えた / 使えなかった）が出ます。使えなかった表現は、次の復習で意識してみてください
     </div>
   </div>`;
