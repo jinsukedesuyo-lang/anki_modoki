@@ -132,10 +132,10 @@ export function previewLabel(cardId, srs, rating, now, settings = DEFAULT_SETTIN
   const next = answer(cardId, srs, rating, now, settings);
   if (next.state === 'review') {
     const d = next.interval;
-    if (d < 30) return `${d}日`;
-    if (d < 365) return `${(d / 30).toFixed(1)}ヶ月`;
-    return `${(d / 365).toFixed(1)}年`;
+    if (d < 30) return d === 1 ? '1 day' : `${d} days`;
+    if (d < 365) return `${(d / 30).toFixed(1)} mo`;
+    return `${(d / 365).toFixed(1)} yr`;
   }
   const m = Math.round((next.due - now) / MIN);
-  return m < 60 ? `${m}分` : `${Math.round(m / 60)}時間`;
+  return m < 60 ? `${m} min` : `${Math.round(m / 60)} hr`;
 }

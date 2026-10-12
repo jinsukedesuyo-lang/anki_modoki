@@ -5,7 +5,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   await chrome.contextMenus.removeAll();
   chrome.contextMenus.create({
     id: 'anki-modoki-capture',
-    title: 'Ankiもどきでカード作成',
+    title: 'Make an Anki Modoki card',
     contexts: ['selection', 'page', 'video'],
   });
   if (details.reason === 'install') chrome.runtime.openOptionsPage();
@@ -26,7 +26,7 @@ async function notify(tabId, message) {
   // 簡易通知: バッジに表示
   chrome.action.setBadgeBackgroundColor({ color: '#cf222e' });
   chrome.action.setBadgeText({ tabId, text: '!' });
-  chrome.action.setTitle({ tabId, title: `Ankiもどき: ${message}` });
+  chrome.action.setTitle({ tabId, title: `Anki Modoki: ${message}` });
   setTimeout(() => chrome.action.setBadgeText({ tabId, text: '' }), 4000);
   console.warn(message);
 }
@@ -58,7 +58,7 @@ async function capture(tab) {
     const shot = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
     image = await crop(shot, info.rect, info.viewport);
   } catch (e) {
-    notify(tab.id, `スクリーンショットを撮れませんでした: ${e.message}`);
+    notify(tab.id, `Couldn't take a screenshot: ${e.message}`);
   }
 
   // 3. Ankiもどき を開いて受け渡す

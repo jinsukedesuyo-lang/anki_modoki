@@ -10,12 +10,12 @@ document.getElementById('save').addEventListener('click', async () => {
   try {
     url = new URL(input.value.trim());
   } catch {
-    status.textContent = 'URL が正しくありません';
+    status.textContent = 'That URL is not valid';
     return;
   }
   url.hash = '';
   const value = url.href.replace(/\/?$/, '/');
   input.value = value;
   await chrome.storage.sync.set({ appUrl: value });
-  status.textContent = '保存しました';
+  status.textContent = 'Saved';
 });

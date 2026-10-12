@@ -1,7 +1,7 @@
 import * as data from './data.js';
 import { previewLabel, DEFAULT_SETTINGS, dayStart } from './srs.js';
 import { buildPracticePrompt, MODES } from './practice.js';
-import { sanitizeSentence, escapeHtml, stripHtml, parseDelimited, highlightWord } from './lib.js';
+import { sanitizeSentence, escapeHtml, stripHtml, parseDelimited, highlightWord, englishMeaning } from './lib.js';
 import { renderEditor } from './editor.js';
 import { icon, brandMark } from './icons.js';
 
@@ -22,10 +22,10 @@ function toast(msg) {
 const isLearning = (c) => c.srs.state === 'learning' || c.srs.state === 'relearning';
 
 function stateLabel(srs) {
-  if (srs.state === 'new') return '新規';
-  if (srs.state !== 'review') return '学習中';
+  if (srs.state === 'new') return 'New';
+  if (srs.state !== 'review') return 'Learning';
   const days = Math.ceil((srs.due - Date.now()) / 86400000);
-  return days <= 0 ? '今日' : `${days}日後`;
+  return days <= 0 ? 'Today' : days === 1 ? 'Tomorrow' : `In ${days} days`;
 }
 
 // 字幕風の英文
@@ -40,19 +40,19 @@ function tile(c, signed) {
     </div>
     <div class="info">
       <div class="title">${escapeHtml(c.word || stripHtml(c.sentence))}</div>
-      <div class="sub">${c.meaning ? `${escapeHtml(c.meaning)} · ` : ''}${escapeHtml(stripHtml(c.sentence))}</div>
+      <div class="sub">${englishMeaning(c) ? `${escapeHtml(englishMeaning(c))} · ` : ''}${escapeHtml(stripHtml(c.sentence))}</div>
     </div>
   </a>`;
 }
 
 function renderShell() {
-  document.getElementById('brand').innerHTML = `${brandMark}<span>Ankiもどき</span>`;
+  document.getElementById('brand').innerHTML = `${brandMark}<span>Anki Modoki</span>`;
   const items = [
-    ['', 'home', 'ホーム'],
-    ['review', 'play', '復習'],
-    ['new', 'add', '追加'],
-    ['browse', 'library', 'カード'],
-    ['settings', 'tune', '設定'],
+    ['', 'home', 'Home'],
+    ['review', 'play', 'Review'],
+    ['new', 'add', 'Add'],
+    ['browse', 'library', 'Cards'],
+    ['settings', 'tune', 'Settings'],
   ];
   document.getElementById('nav').innerHTML = items
     .map(([r, ic, label]) => `<a href="#/${r}" data-route="${r}" class="${r === 'new' ? 'add' : ''}">${icon(ic)}<span>${label}</span></a>`)
@@ -63,9 +63,9 @@ function renderStatus() {
   const end = document.getElementById('mastheadEnd');
   const pending = data.pendingCount();
   end.innerHTML = !navigator.onLine
-    ? `<span class="meta row" title="オフライン">${icon('offline', 18)}オフライン</span>`
+    ? `<span class="meta row" title="Offline">${icon('offline', 18)}Offline</span>`
     : pending
-      ? `<span class="meta row" title="未送信の回答">${icon('sync', 18)}${pending}件 同期待ち</span>`
+      ? `<span class="meta row" title="Answers waiting to sync">${icon('sync', 18)}${pending} to sync</span>`
       : '';
 }
 window.addEventListener('online', renderStatus);
@@ -107,25 +107,25 @@ async function router() {
     await (routes[name] || home)(arg);
   } catch (e) {
     console.error(e);
-    view.innerHTML = `<div class="empty"><p>読み込みに失敗しました: ${escapeHtml(e.message)}</p>
-      <button class="btn" onclick="location.reload()">${icon('replay')}再読み込み</button></div>`;
+    view.innerHTML = `<div class="empty"><p>Couldn't load this page: ${escapeHtml(e.message)}</p>
+      <button class="btn" onclick="location.reload()">${icon('replay')}Reload</button></div>`;
   }
 }
 
 function setupNeeded() {
   view.innerHTML = `<div class="center-page"><div class="login">
-    <div class="brand">${brandMark}<span>Ankiもどき</span></div>
-    <h1>初期設定が必要です</h1>
-    <p class="meta" style="font-size:14px"><code>public/config.js</code> に Supabase の Project URL と anon key を設定してください。手順は README.md にあります。</p>
+    <div class="brand">${brandMark}<span>Anki Modoki</span></div>
+    <h1>Setup needed</h1>
+    <p class="meta" style="font-size:14px">Put your Supabase Project URL and anon key in <code>public/config.js</code>. See README.md for the steps.</p>
   </div></div>`;
 }
 
 function login() {
   view.innerHTML = `<div class="center-page"><form class="login" id="f">
-    <div class="brand">${brandMark}<span>Ankiもどき</span></div>
-    <label class="field"><span class="label">メールアドレス</span><input type="email" id="email" autocomplete="username" required></label>
-    <label class="field"><span class="label">パスワード</span><input type="password" id="pw" autocomplete="current-password" required></label>
-    <button class="btn primary lg">ログイン</button>
+    <div class="brand">${brandMark}<span>Anki Modoki</span></div>
+    <label class="field"><span class="label">Email</span><input type="email" id="email" autocomplete="username" required></label>
+    <label class="field"><span class="label">Password</span><input type="password" id="pw" autocomplete="current-password" required></label>
+    <button class="btn primary lg">Log in</button>
   </form></div>`;
   view.querySelector('#f').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -134,7 +134,7 @@ function login() {
       await data.loadSettings();
       location.hash = '#/';
     } catch (err) {
-      toast(`ログインできませんでした: ${err.message}`);
+      toast(`Couldn't log in: ${err.message}`);
     }
   });
 }
@@ -153,24 +153,24 @@ async function home() {
 
   view.innerHTML = `
     <section class="hero ${total ? '' : 'done'}">
-      <a class="player ${cover ? '' : 'blank'}" href="#/review" aria-label="復習を始める">
+      <a class="player ${cover ? '' : 'blank'}" href="#/review" aria-label="Start review">
         ${cover ? `<img src="${escapeHtml(signed(cover.image))}" alt="">` : ''}
-        ${total ? `<span class="playbtn">${icon('play')}</span>` : caption('今日の分は完了しました')}
+        ${total ? `<span class="playbtn">${icon('play')}</span>` : caption('All done for today')}
       </a>
-      <h1 class="watch-title">${total ? `今日の復習 · 残り ${total} 枚` : 'おつかれさまでした'}</h1>
+      <h1 class="watch-title">${total ? `Today's review · ${total} left` : 'Great work today'}</h1>
       <div class="watch-meta">
-        <span class="n">新規 <b>${n}</b></span>·<span class="l">学習中 <b>${l}</b></span>·<span class="r">復習 <b>${r}</b></span>
+        <span class="n">New <b>${n}</b></span>·<span class="l">Learning <b>${l}</b></span>·<span class="r">Review <b>${r}</b></span>
       </div>
-      ${data.pendingCount() ? `<div class="notice">${icon('sync')}未送信の回答 ${data.pendingCount()} 件。オンラインになると自動で同期されます</div>` : ''}
-      ${navigator.onLine ? '' : `<div class="notice">${icon('offline')}オフラインです。前回読み込んだカードで復習できます</div>`}
+      ${data.pendingCount() ? `<div class="notice">${icon('sync')}${data.pendingCount()} answers waiting. They sync automatically when you're online.</div>` : ''}
+      ${navigator.onLine ? '' : `<div class="notice">${icon('offline')}You're offline. You can still review the cards loaded last time.</div>`}
       <div class="chips wrap" style="margin-top:12px">
-        <a class="chip" href="#/new">${icon('add', 18)}カードを追加</a>
-        <a class="chip" href="#/practice">${icon('chat', 18)}会話で使ってみる</a>
-        <a class="chip" href="#/import">${icon('upload', 18)}CSV取り込み</a>
-        <a class="chip" href="#/usage">${icon('chart', 18)}AI利用料</a>
+        <a class="chip" href="#/new">${icon('add', 18)}Add a card</a>
+        <a class="chip" href="#/practice">${icon('chat', 18)}Practice speaking</a>
+        <a class="chip" href="#/import">${icon('upload', 18)}Import CSV</a>
+        <a class="chip" href="#/usage">${icon('chart', 18)}AI costs</a>
       </div>
     </section>
-    <h2>最近追加したカード</h2>
+    <h2>Recently added</h2>
     <div class="grid" id="recent"></div>`;
 
   try {
@@ -178,7 +178,7 @@ async function home() {
     const s = await data.signUrls(recent.map((c) => c.image));
     view.querySelector('#recent').innerHTML = recent.length
       ? recent.map((c) => tile(c, s)).join('')
-      : '<p class="meta">まだカードがありません。YouTube で知らない単語を選んで Alt+A を押すか、「追加」から作成してください。</p>';
+      : '<p class="meta">No cards yet. Select an unknown word on YouTube and press Alt+A, or tap Add.</p>';
   } catch {
     // オフライン時などは「最近追加したカード」欄ごと隠す
     view.querySelector('#recent')?.previousElementSibling?.remove();
@@ -237,15 +237,15 @@ async function review() {
     if (current) return draw();
     const later = cards.filter(isLearning).sort((a, b) => a.srs.due - b.srs.due)[0];
     if (later) {
-      const t = new Date(later.srs.due).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
-      screen('ひと休み', `<h1 class="watch-title">次のカードは ${t} 頃に出題されます</h1>
-        <div class="watch-meta">このページを開いたままにすると自動で再開します</div>
-        <div class="chips"><a class="chip" href="#/">${icon('home', 18)}ホームへ</a></div>`);
+      const t = new Date(later.srs.due).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      screen('Take a break', `<h1 class="watch-title">The next card comes back around ${t}</h1>
+        <div class="watch-meta">Keep this page open and it will continue automatically.</div>
+        <div class="chips"><a class="chip" href="#/">${icon('home', 18)}Home</a></div>`);
       waitTimer = setTimeout(render, Math.min(60000, Math.max(1000, later.srs.due - LEARN_AHEAD - Date.now())));
       return;
     }
-    screen('今日の分は完了しました', `<h1 class="watch-title">${answered} 枚回答しました</h1>
-      <div class="chips"><a class="chip" href="#/">${icon('home', 18)}ホームへ</a><a class="chip active" href="#/practice">${icon('chat', 18)}会話で使ってみる</a><a class="chip" href="#/new">${icon('add', 18)}カードを追加</a></div>`);
+    screen('All done for today', `<h1 class="watch-title">You answered ${answered} card${answered === 1 ? '' : 's'}</h1>
+      <div class="chips"><a class="chip" href="#/">${icon('home', 18)}Home</a><a class="chip active" href="#/practice">${icon('chat', 18)}Practice speaking</a><a class="chip" href="#/new">${icon('add', 18)}Add a card</a></div>`);
   }
 
   function draw() {
@@ -254,7 +254,7 @@ async function review() {
     const rest = remaining();
     const pct = Math.round((answered / (answered + rest.length || 1)) * 100);
     const showImg = c.image && (showing || sceneOnFront);
-    const src = c.source?.url ? `<a class="chip" href="${escapeHtml(c.source.url)}" target="_blank" rel="noopener">${icon('open', 18)}元の動画</a>` : '';
+    const src = c.source?.url ? `<a class="chip" href="${escapeHtml(c.source.url)}" target="_blank" rel="noopener">${icon('open', 18)}Original video</a>` : '';
 
     view.innerHTML = `<div class="watch">
       <div class="player ${showImg ? '' : 'blank'} ${ccOn ? '' : 'cc-off'}" id="player">
@@ -263,8 +263,8 @@ async function review() {
         <div class="progress"><i style="width:${pct}%"></i></div>
       </div>
       ${showing
-        ? `<h1 class="watch-title">${escapeHtml(c.meaning) || '<span class="meta">（意味が未入力です）</span>'}</h1>`
-        : '<h1 class="watch-title pending">意味と場面を思い浮かべてから「答えを見る」</h1>'}
+        ? `<h1 class="watch-title">${escapeHtml(englishMeaning(c)) || `<span class="meta">No English meaning yet — <a class="link" href="#/edit/${c.id}">add one</a></span>`}</h1>`
+        : '<h1 class="watch-title pending">Recall the meaning and the scene, then tap Show answer</h1>'}
       <div class="watch-meta">
         <span>${escapeHtml(c.word)}</span>${c.word ? '·' : ''}<span>${stateLabel(c.srs)}</span>
         <span class="spacer"></span>
@@ -273,15 +273,15 @@ async function review() {
         <span class="r"><b>${rest.filter((x) => x.srs.state === 'review').length}</b></span>
       </div>
       <div class="chips">
-        <button class="chip" id="speak">${icon('volume', 18)}読み上げ</button>
-        ${!showing && c.image ? `<button class="chip ${sceneOnFront ? 'active' : ''}" id="scene">${icon('image', 18)}表で場面を見る</button>` : ''}
-        ${showing ? `<button class="chip ${ccOn ? 'active' : ''}" id="cc">${icon('cc', 18)}字幕</button>${src}<a class="chip" href="#/edit/${c.id}">${icon('edit', 18)}編集</a>` : ''}
+        <button class="chip" id="speak">${icon('volume', 18)}Listen</button>
+        ${!showing && c.image ? `<button class="chip ${sceneOnFront ? 'active' : ''}" id="scene">${icon('image', 18)}Scene on front</button>` : ''}
+        ${showing ? `<button class="chip ${ccOn ? 'active' : ''}" id="cc">${icon('cc', 18)}Captions</button>${src}<a class="chip" href="#/edit/${c.id}">${icon('edit', 18)}Edit</a>` : ''}
       </div>
-      ${showing && (c.refImage || c.imagery?.core_image_ja)
+      ${showing && (c.refImage || c.imagery?.core_image_en)
         ? `<div class="desc">
-            <div class="head">${c.imagery ? 'ネイティブのイメージ' : 'イメージ'}</div>
-            ${c.imagery?.core_image_ja ? `<div style="font-size:15px;margin-bottom:4px">${escapeHtml(c.imagery.core_image_ja)}</div>` : ''}
-            ${c.imagery?.scene_ja ? `<div class="meta" style="font-size:13px;margin-bottom:8px">${escapeHtml(c.imagery.scene_ja)}</div>` : ''}
+            <div class="head">${c.imagery?.core_image_en ? 'How natives picture it' : 'Image'}</div>
+            ${c.imagery?.core_image_en ? `<div style="font-size:15px;margin-bottom:4px">${escapeHtml(c.imagery.core_image_en)}</div>` : ''}
+            ${c.imagery?.scene_en ? `<div class="meta" style="font-size:13px;margin-bottom:8px">${escapeHtml(c.imagery.scene_en)}</div>` : ''}
             ${c.refImage ? `<img src="${escapeHtml(signed(c.refImage))}" alt="">` : ''}
           </div>`
         : ''}
@@ -291,7 +291,7 @@ async function review() {
       ${showing
         ? `<button class="btn" id="again">Again <small>${previewLabel(c.id, c.srs, 'again', now, settings)} <span class="kbd">· 1</span></small></button>
            <button class="btn primary" id="good">Good <small>${previewLabel(c.id, c.srs, 'good', now, settings)} <span class="kbd">· Space</span></small></button>`
-        : '<button class="btn primary" id="show">答えを見る <small class="kbd">Space</small></button>'}
+        : '<button class="btn primary" id="show">Show answer <small class="kbd">Space</small></button>'}
     </div></div>`;
 
     view.querySelector('#show')?.addEventListener('click', flip);
@@ -378,19 +378,19 @@ async function browse() {
   view.innerHTML = `
     <div class="row" style="margin:8px 0 12px">
       <form class="search" id="sf" role="search">
-        <input type="search" id="q" placeholder="単語・文・意味で検索" enterkeyhint="search">
-        <button class="go" aria-label="検索">${icon('search')}</button>
+        <input type="search" id="q" placeholder="Search words, sentences, meanings" enterkeyhint="search">
+        <button class="go" aria-label="Search">${icon('search')}</button>
       </form>
     </div>
     <div class="chips" id="filters">
-      <button class="chip active" data-state="">すべて</button>
-      <button class="chip" data-state="new">新規</button>
-      <button class="chip" data-state="learning">学習中</button>
-      <button class="chip" data-state="review">復習</button>
+      <button class="chip active" data-state="">All</button>
+      <button class="chip" data-state="new">New</button>
+      <button class="chip" data-state="learning">Learning</button>
+      <button class="chip" data-state="review">Review</button>
     </div>
     <div class="meta" id="total" style="margin-bottom:12px"></div>
     <div class="grid" id="list"></div>
-    <div class="row" style="justify-content:center;margin-top:24px"><button class="btn" id="more" hidden>さらに表示</button></div>`;
+    <div class="row" style="justify-content:center;margin-top:24px"><button class="btn" id="more" hidden>Show more</button></div>`;
   const list = view.querySelector('#list');
   let q = '';
   let state = '';
@@ -405,9 +405,9 @@ async function browse() {
     const { total, cards } = await data.listCards(q, offset, 48, state);
     const signed = await data.signUrls(cards.map((c) => c.image));
     offset += cards.length;
-    view.querySelector('#total').textContent = `${total} 枚`;
+    view.querySelector('#total').textContent = `${total} card${total === 1 ? '' : 's'}`;
     view.querySelector('#more').hidden = offset >= total;
-    if (!total) list.innerHTML = '<p class="meta">該当するカードはありません</p>';
+    if (!total) list.innerHTML = '<p class="meta">No matching cards</p>';
     list.insertAdjacentHTML('beforeend', cards.map((c) => tile(c, signed)).join(''));
   }
   const search = () => {
@@ -436,9 +436,9 @@ async function browse() {
 // ---------- CSV 取り込み（Language Reactor の保存単語など） ----------
 function importView() {
   view.innerHTML = `<div class="narrow">
-    <h1>CSV / TSV 取り込み</h1>
-    <p class="meta" style="font-size:14px">Language Reactor の保存単語エクスポートなどを読み込みます。画像は取り込まれないので、必要なら後からカードを編集して追加してください。</p>
-    <label class="btn" style="margin:8px 0 16px">${icon('upload')}ファイルを選択
+    <h1>Import CSV / TSV</h1>
+    <p class="meta" style="font-size:14px">Import saved words exported from Language Reactor and similar tools. Images aren't imported; you can add them later by editing each card.</p>
+    <label class="btn" style="margin:8px 0 16px">${icon('upload')}Choose a file
       <input type="file" id="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values" hidden></label>
     <div id="mapping"></div>
   </div>`;
@@ -446,26 +446,26 @@ function importView() {
     const file = e.target.files[0];
     if (!file) return;
     const rows = parseDelimited(await file.text());
-    if (!rows.length) return toast('データが見つかりませんでした');
+    if (!rows.length) return toast('No data found in this file');
     const width = Math.max(...rows.map((r) => r.length));
     const guess = (re) => rows[0].findIndex((h) => re.test(h));
     const guessed = {
-      sentence: guess(/sentence|subtitle|context|example|文|字幕/i),
-      word: guess(/^(word|term|lemma|phrase|単語)/i),
-      meaning: guess(/meaning|translation|definition|意味|訳/i),
+      sentence: guess(/sentence|subtitle|context|example|文|字幕/i), // ALLOW_JA: 日本語見出しの CSV も読む
+      word: guess(/^(word|term|lemma|phrase|単語)/i), // ALLOW_JA
+      meaning: guess(/meaning|translation|definition|意味|訳/i), // ALLOW_JA
     };
     const opts = (sel) =>
-      `<option value="-1">（使わない）</option>` +
-      Array.from({ length: width }, (_, i) => `<option value="${i}" ${i === sel ? 'selected' : ''}>${i + 1}列目: ${escapeHtml((rows[0][i] || '').slice(0, 30))}</option>`).join('');
+      `<option value="-1">(don't use)</option>` +
+      Array.from({ length: width }, (_, i) => `<option value="${i}" ${i === sel ? 'selected' : ''}>Column ${i + 1}: ${escapeHtml((rows[0][i] || '').slice(0, 30))}</option>`).join('');
     const box = view.querySelector('#mapping');
     box.innerHTML = `
       <div style="display:flex;flex-direction:column;gap:12px">
-        <label class="row"><input type="checkbox" id="header" ${Object.values(guessed).some((i) => i >= 0) ? 'checked' : ''}> 1行目は見出し</label>
-        <label class="field"><span class="label">センテンス（必須）</span><select id="m-sentence">${opts(guessed.sentence)}</select></label>
-        <label class="field"><span class="label">単語（センテンス内で自動ハイライト）</span><select id="m-word">${opts(guessed.word)}</select></label>
-        <label class="field"><span class="label">日本語の意味</span><select id="m-meaning">${opts(guessed.meaning)}</select></label>
+        <label class="row"><input type="checkbox" id="header" ${Object.values(guessed).some((i) => i >= 0) ? 'checked' : ''}> First row is a header</label>
+        <label class="field"><span class="label">Sentence (required)</span><select id="m-sentence">${opts(guessed.sentence)}</select></label>
+        <label class="field"><span class="label">Word (highlighted in the sentence)</span><select id="m-word">${opts(guessed.word)}</select></label>
+        <label class="field"><span class="label">Meaning (English)</span><select id="m-meaning">${opts(guessed.meaning)}</select></label>
         <div id="pv"></div>
-        <div><button class="btn primary" id="go">取り込む</button></div>
+        <div><button class="btn primary" id="go">Import</button></div>
       </div>`;
 
     const build = () => {
@@ -484,26 +484,26 @@ function importView() {
     };
     const preview = () => {
       const items = build();
-      box.querySelector('#pv').innerHTML = `<div class="meta">${items.length} 件（先頭5件のプレビュー）</div>
-        <table class="preview"><tr><th>センテンス</th><th>意味</th></tr>${items
+      box.querySelector('#pv').innerHTML = `<div class="meta">${items.length} rows (preview of the first 5)</div>
+        <table class="preview"><tr><th>Sentence</th><th>Meaning</th></tr>${items
           .slice(0, 5)
-          .map((r) => `<tr><td>${sanitizeSentence(r.sentence)}</td><td>${escapeHtml(r.meaning)}</td></tr>`)
+          .map((r) => `<tr><td>${sanitizeSentence(r.sentence)}</td><td>${escapeHtml(englishMeaning(r))}</td></tr>`)
           .join('')}</table>`;
     };
     box.onchange = preview; // ファイルを選び直しても二重登録しない
     preview();
     box.querySelector('#go').addEventListener('click', async (ev) => {
       const items = build();
-      if (!items.length) return toast('取り込めるデータがありません');
+      if (!items.length) return toast('Nothing to import');
       ev.target.disabled = true;
       try {
-        const n = await data.importCards(items, (done, all) => (ev.target.textContent = `取り込み中… ${done}/${all}`));
-        toast(`${n} 枚取り込みました`);
+        const n = await data.importCards(items, (done, all) => (ev.target.textContent = `Importing… ${done}/${all}`));
+        toast(`Imported ${n} cards`);
         location.hash = '#/browse';
       } catch (err) {
-        toast(`失敗しました: ${err.message}`);
+        toast(`Import failed: ${err.message}`);
         ev.target.disabled = false;
-        ev.target.textContent = '取り込む';
+        ev.target.textContent = 'Import';
       }
     });
   });
@@ -517,22 +517,22 @@ async function practice() {
   const [{ cards: all }, logs] = await Promise.all([data.listCards('', 0, 1000), data.reviewedCardIds(ds - 13 * 864e5)]);
   const studied = all.filter((c) => c.srs.state !== 'new');
   if (!studied.length) {
-    view.innerHTML = `<div class="empty"><h1>会話で使ってみる</h1><p>復習したカードがまだありません。まずは何枚か復習してから試してください。</p>
-      <a class="btn" href="#/review">${icon('play')}復習へ</a></div>`;
+    view.innerHTML = `<div class="empty"><h1>Practice speaking</h1><p>You haven't reviewed any cards yet. Review a few first, then come back.</p>
+      <a class="btn" href="#/review">${icon('play')}Go to review</a></div>`;
     return;
   }
   const todayIds = new Set(logs.filter((l) => l.ts >= ds).map((l) => l.card_id));
   const againIds = new Set(logs.filter((l) => l.rating === 'again').map((l) => l.card_id));
   const groups = {
-    today: { label: '今日復習した', cards: studied.filter((c) => todayIds.has(c.id)) },
+    today: { label: 'Reviewed today', cards: studied.filter((c) => todayIds.has(c.id)) },
     weak: {
-      label: '間違えた・苦手',
+      label: 'Missed / weak',
       cards: studied
         .filter((c) => againIds.has(c.id) || c.srs.lapses > 0 || c.srs.state === 'relearning')
         .sort((a, b) => (b.srs.lapses || 0) - (a.srs.lapses || 0)),
     },
-    recent: { label: '最近覚えた', cards: studied.filter((c) => Date.now() - new Date(c.created).getTime() < 7 * 864e5) },
-    all: { label: 'すべて', cards: studied },
+    recent: { label: 'Learned this week', cards: studied.filter((c) => Date.now() - new Date(c.created).getTime() < 7 * 864e5) },
+    all: { label: 'All', cards: studied },
   };
   let saved = {};
   try {
@@ -551,38 +551,38 @@ async function practice() {
   pickDefault();
 
   view.innerHTML = `<div class="narrow" style="max-width:760px">
-    <h1>会話で使ってみる</h1>
-    <p class="meta" style="font-size:14px">覚えた表現を ChatGPT・Claude・Gemini との会話で<b>自分の口から使う</b>ためのプロンプトを作ります。1回5〜8語、15分くらいが目安です。</p>
+    <h1>Practice speaking</h1>
+    <p class="meta" style="font-size:14px">Build a prompt for ChatGPT, Claude or Gemini so you <b>say the expressions yourself</b> in a real conversation. Aim for 5–8 expressions, about 15 minutes.</p>
 
-    <div class="sub-label" style="margin-top:20px">練習する表現</div>
+    <div class="sub-label" style="margin-top:20px">Expressions</div>
     <div class="chips" id="groups"></div>
     <div class="pick-list" id="picks"></div>
 
-    <div class="sub-label" style="margin-top:20px">進め方</div>
+    <div class="sub-label" style="margin-top:20px">Practice style</div>
     <div class="chips" id="modes"></div>
     <div class="meta" id="modeHint" style="margin:-4px 0 12px"></div>
     <div class="row" style="gap:16px">
-      <label class="field" style="flex:1;min-width:200px"><span class="label">英語のレベル</span>
-        <select id="level"><option value="A2">A2（やさしめ）</option><option value="B1">B1（日常会話）</option><option value="B2">B2（自然なスピード）</option></select></label>
-      <label class="row"><input type="checkbox" id="voice"> 音声で話す（音声モード向け）</label>
+      <label class="field" style="flex:1;min-width:200px"><span class="label">Your English level</span>
+        <select id="level"><option value="A2">A2 (simple)</option><option value="B1">B1 (everyday conversation)</option><option value="B2">B2 (natural speed)</option></select></label>
+      <label class="row"><input type="checkbox" id="voice"> I'll talk by voice</label>
     </div>
 
-    <div class="sub-label" style="margin-top:20px">プロンプト <span class="meta" id="pcount"></span></div>
+    <div class="sub-label" style="margin-top:20px">Prompt <span class="meta" id="pcount"></span></div>
     <textarea id="out" readonly rows="12" class="prompt-out"></textarea>
     <div class="actions" style="margin-top:12px">
-      <button class="btn primary" id="copy">${icon('copy')}コピー</button>
-      <button class="btn" id="chatgpt">${icon('open')}ChatGPTで開く</button>
-      <button class="btn" id="claude">${icon('open')}Claudeで開く</button>
-      <button class="btn" id="gemini">${icon('open')}Geminiで開く</button>
-      <button class="btn ghost" id="save">${icon('download')}テキストで保存</button>
+      <button class="btn primary" id="copy">${icon('copy')}Copy</button>
+      <button class="btn" id="chatgpt">${icon('open')}Open in ChatGPT</button>
+      <button class="btn" id="claude">${icon('open')}Open in Claude</button>
+      <button class="btn" id="gemini">${icon('open')}Open in Gemini</button>
+      <button class="btn ghost" id="save">${icon('download')}Save as text</button>
     </div>
     <div class="desc" style="margin-top:16px;font-size:13px;line-height:1.8">
-      <div class="head">使い方のコツ</div>
-      ・音声で話すなら「音声で話す」をオンにして、ChatGPT や Gemini アプリの音声モードで貼り付けてから話しかけます<br>
-      ・わからないときは <b>I don't understand</b>（または「わからない」）と言えば、すぐに答えを教えてくれます<br>
-      ・文が作れないときは <b>I can't make a sentence</b> と言えば、例文を見せてくれます<br>
-      ・不自然な文は正しい形を教えてくれるので、<b>声に出して言い直して</b>から次へ進みます<br>
-      ・最後に <b>finish</b> と言うと、日本語の振り返り（自力で使えた / ヒントで使えた / 使えなかった）が出ます。使えなかった表現は、次の復習で意識してみてください
+      <div class="head">Tips</div>
+      • To talk by voice, turn on "I'll talk by voice", paste the prompt into the ChatGPT or Gemini app, then switch to voice mode<br>
+      • Stuck? Say <b>I don't understand</b> and you'll get the answer right away<br>
+      • Can't make a sentence? Say <b>I can't make a sentence</b> and you'll get an example<br>
+      • When you get a correction, <b>say the better version out loud</b> before moving on<br>
+      • Say <b>finish</b> at the end for a short report (◎ on your own / △ after a hint / × not yet). Keep the × ones in mind during your next review
     </div>
   </div>`;
 
@@ -598,14 +598,14 @@ async function practice() {
       .join('');
     $('#picks').innerHTML = groups[st.group].cards
       .map((c) => `<label class="pick"><input type="checkbox" data-id="${c.id}" ${st.selected.has(c.id) ? 'checked' : ''}>
-        <span class="w">${escapeHtml(c.word || stripHtml(c.sentence))}</span><span class="meta">${escapeHtml(c.meaning)}</span></label>`)
+        <span class="w">${escapeHtml(c.word || stripHtml(c.sentence))}</span><span class="meta">${escapeHtml(englishMeaning(c))}</span></label>`)
       .join('');
     $('#modes').innerHTML = Object.entries(MODES)
       .map(([k, m]) => `<button class="chip ${k === st.mode ? 'active' : ''}" data-m="${k}">${m.label}</button>`)
       .join('');
     $('#modeHint').textContent = MODES[st.mode].hint;
     const cards = selectedCards();
-    $('#pcount').textContent = `— ${cards.length} 語${cards.length > 8 ? '（多いと1語ずつが浅くなります。5〜8語がおすすめ）' : ''}`;
+    $('#pcount').textContent = `— ${cards.length} expression${cards.length === 1 ? '' : 's'}${cards.length > 8 ? ' (with too many, each one gets less practice; 5–8 is best)' : ''}`;
     $('#out').value = cards.length ? buildPracticePrompt({ cards, mode: st.mode, level: st.level, voice: st.voice }) : '';
   }
   $('#groups').addEventListener('click', (e) => {
@@ -639,7 +639,7 @@ async function practice() {
   async function copy() {
     const text = $('#out').value;
     if (!text) {
-      toast('練習する表現を選んでください');
+      toast('Choose at least one expression');
       return false;
     }
     try {
@@ -654,18 +654,18 @@ async function practice() {
   async function openWith(url, name) {
     if (!(await copy())) return;
     window.open(url, '_blank', 'noopener');
-    toast(`${name}を開きました。入力欄が空なら貼り付け（Ctrl+V）してください`);
+    toast(`Opened ${name}. If the message box is empty, paste the prompt (Ctrl+V).`);
   }
   $('#copy').addEventListener('click', async () => {
-    if (await copy()) toast('コピーしました。AI のチャットに貼り付けて送信してください');
+    if (await copy()) toast('Copied. Paste it into your AI chat and send it.');
   });
   $('#chatgpt').addEventListener('click', () => openWith(`https://chatgpt.com/?q=${encodeURIComponent($('#out').value)}`, 'ChatGPT'));
   $('#claude').addEventListener('click', () => openWith(`https://claude.ai/new?q=${encodeURIComponent($('#out').value)}`, 'Claude'));
   $('#gemini').addEventListener('click', () => openWith('https://gemini.google.com/app', 'Gemini'));
   $('#save').addEventListener('click', () => {
     const text = $('#out').value;
-    if (!text) return toast('練習する表現を選んでください');
-    download(`会話練習_${new Date().toISOString().slice(0, 10)}.txt`, text, 'text/plain');
+    if (!text) return toast('Choose at least one expression');
+    download(`speaking-practice_${new Date().toISOString().slice(0, 10)}.txt`, text, 'text/plain');
   });
   update();
 }
@@ -696,7 +696,7 @@ async function usage() {
   const usd = (v, d = 4) => `$${v.toFixed(d)}`;
   const yen = (v) => {
     const y = v * data.usdJpy();
-    return `${y.toLocaleString('ja-JP', { maximumFractionDigits: y < 10 ? 2 : 0 })} 円`;
+    return `¥${y.toLocaleString('en-US', { maximumFractionDigits: y < 10 ? 2 : 0 })}`;
   };
 
   // 処理 × モデル別の内訳
@@ -710,7 +710,7 @@ async function usage() {
     g.cost += Number(r.cost_usd);
     if (!r.ok) g.fail++;
   }
-  const stepName = { concept: '文脈の分析', image: '画像生成' };
+  const stepName = { concept: 'Context analysis', image: 'Image' };
   let sim = { cards: 300, users: 100 };
   try {
     sim = { ...sim, ...JSON.parse(localStorage.getItem('am:sim') || '{}') };
@@ -719,46 +719,46 @@ async function usage() {
   }
 
   view.innerHTML = `<div style="max-width:960px">
-    <h1>AI 利用料</h1>
+    <h1>AI costs</h1>
     <div class="kpis">
-      <div><span>今月の費用</span><b>${yen(sum(month))}</b><small>${usd(sum(month))} · ${generations(month)} 回生成</small></div>
-      <div><span>1回の生成あたり</span><b>${yen(unit)}</b><small>${perGen == null ? '目安（まだ実績がありません）' : `${usd(unit)} · 実績 ${genAll} 回の平均`}</small></div>
-      <div><span>累計</span><b>${yen(sum(rows))}</b><small>${usd(sum(rows))} · API 呼び出し ${rows.length} 回</small></div>
+      <div><span>This month</span><b>${yen(sum(month))}</b><small>${usd(sum(month))} · ${generations(month)} generations</small></div>
+      <div><span>Per generation</span><b>${yen(unit)}</b><small>${perGen == null ? 'Estimate (no data yet)' : `${usd(unit)} · average of ${genAll}`}</small></div>
+      <div><span>All time</span><b>${yen(sum(rows))}</b><small>${usd(sum(rows))} · ${rows.length} API calls</small></div>
     </div>
 
-    <h2>製品化したときの試算</h2>
+    <h2>Cost forecast for a product</h2>
     <div class="desc">
       <div class="form-grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
-        <label class="field"><span class="label">1人あたり月の生成枚数</span><input type="number" id="simCards" min="0" value="${sim.cards}"></label>
-        <label class="field"><span class="label">ユーザー数</span><input type="number" id="simUsers" min="0" value="${sim.users}"></label>
-        <label class="field"><span class="label">為替（円 / ドル）</span><input type="number" id="rate" min="1" step="0.1" value="${data.usdJpy()}"></label>
+        <label class="field"><span class="label">Generations per user / month</span><input type="number" id="simCards" min="0" value="${sim.cards}"></label>
+        <label class="field"><span class="label">Users</span><input type="number" id="simUsers" min="0" value="${sim.users}"></label>
+        <label class="field"><span class="label">Exchange rate (JPY per USD)</span><input type="number" id="rate" min="1" step="0.1" value="${data.usdJpy()}"></label>
       </div>
       <div class="kpis" id="simOut" style="margin-top:12px"></div>
-      <div class="meta" style="margin-top:8px">1回の生成 = 文脈の分析 + 画像1枚。実績の平均単価（失敗した呼び出しの費用も含む）で計算しています。</div>
+      <div class="meta" style="margin-top:8px">One generation = context analysis + one image. Uses your actual average cost, including failed calls.</div>
     </div>
 
-    <h2>内訳</h2>
+    <h2>Breakdown</h2>
     ${Object.keys(groups).length
       ? `<div style="overflow-x:auto"><table class="preview">
-        <tr><th>処理</th><th>モデル</th><th>回数</th><th>平均 入力</th><th>平均 出力（思考込み）</th><th>平均 画像</th><th>平均費用</th><th>合計</th></tr>
+        <tr><th>Step</th><th>Model</th><th>Calls</th><th>Avg input</th><th>Avg output (incl. thinking)</th><th>Avg image</th><th>Avg cost</th><th>Total</th></tr>
         ${Object.values(groups)
-          .map((g) => `<tr><td>${stepName[g.step] ?? escapeHtml(g.step)}</td><td>${escapeHtml(g.model)}</td><td>${g.n}${g.fail ? `（失敗 ${g.fail}）` : ''}</td>
+          .map((g) => `<tr><td>${stepName[g.step] ?? escapeHtml(g.step)}</td><td>${escapeHtml(g.model)}</td><td>${g.n}${g.fail ? ` (${g.fail} failed)` : ''}</td>
             <td>${Math.round(g.inp / g.n)}</td><td>${Math.round(g.out / g.n)}</td><td>${Math.round(g.img / g.n)}</td>
             <td>${usd(g.cost / g.n, 5)}</td><td>${usd(g.cost)}</td></tr>`)
           .join('')}
       </table></div>`
-      : '<p class="meta">まだ AI を使っていません。カード作成画面の「文脈からイメージと画像を生成」を使うと、ここに記録されます。</p>'}
+      : '<p class="meta">No AI usage yet. Use "Generate from context" on the card editor and it will show up here.</p>'}
 
-    <h2>履歴 <span class="meta">（新しい順 50 件）</span></h2>
-    <div class="actions" style="margin-bottom:8px"><button class="btn sm" id="csv">${icon('download', 18)}CSV で書き出す（全件）</button></div>
+    <h2>History <span class="meta">(latest 50)</span></h2>
+    <div class="actions" style="margin-bottom:8px"><button class="btn sm" id="csv">${icon('download', 18)}Export all as CSV</button></div>
     <div style="overflow-x:auto"><table class="preview">
-      <tr><th>日時</th><th>単語</th><th>処理</th><th>トークン（入力 / 出力 / 画像）</th><th>費用</th><th>結果</th></tr>
+      <tr><th>Time</th><th>Word</th><th>Step</th><th>Tokens (in / out / image)</th><th>Cost</th><th>Result</th></tr>
       ${rows
         .slice(0, 50)
-        .map((r) => `<tr><td>${new Date(r.created_at).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+        .map((r) => `<tr><td>${new Date(r.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</td>
           <td>${escapeHtml(r.word)}</td><td>${stepName[r.step] ?? escapeHtml(r.step)}</td>
           <td>${r.input_tokens} / ${r.output_tokens + r.thought_tokens} / ${r.image_tokens}</td>
-          <td>${usd(Number(r.cost_usd), 5)}</td><td>${r.ok ? 'OK' : `<span class="meta" title="${escapeHtml(r.error || '')}">失敗</span>`}</td></tr>`)
+          <td>${usd(Number(r.cost_usd), 5)}</td><td>${r.ok ? 'OK' : `<span class="meta" title="${escapeHtml(r.error || '')}">Failed</span>`}</td></tr>`)
         .join('')}
     </table></div>
   </div>`;
@@ -771,11 +771,11 @@ async function usage() {
     localStorage.setItem('am:sim', JSON.stringify({ cards, users }));
     data.setUsdJpy(rate);
     const perUser = unit * cards;
-    const fmt = (v) => `${Math.round(v * rate).toLocaleString('ja-JP')} 円`;
+    const fmt = (v) => `¥${Math.round(v * rate).toLocaleString('en-US')}`;
     $('#simOut').innerHTML = `
-      <div><span>1人あたり / 月</span><b>${fmt(perUser)}</b><small>$${perUser.toFixed(2)}</small></div>
-      <div><span>全体 / 月</span><b>${fmt(perUser * users)}</b><small>$${(perUser * users).toFixed(2)}</small></div>
-      <div><span>全体 / 年</span><b>${fmt(perUser * users * 12)}</b><small>$${(perUser * users * 12).toFixed(2)}</small></div>`;
+      <div><span>Per user / month</span><b>${fmt(perUser)}</b><small>$${perUser.toFixed(2)}</small></div>
+      <div><span>All users / month</span><b>${fmt(perUser * users)}</b><small>$${(perUser * users).toFixed(2)}</small></div>
+      <div><span>All users / year</span><b>${fmt(perUser * users * 12)}</b><small>$${(perUser * users * 12).toFixed(2)}</small></div>`;
   }
   ['#simCards', '#simUsers', '#rate'].forEach((s) => $(s).addEventListener('input', renderSim));
   renderSim();
@@ -796,33 +796,33 @@ async function settings() {
     `<label class="field"><span class="label">${label}</span>
       <input type="text" inputmode="decimal" id="s-${key}" value="${escapeHtml(Array.isArray(s[key]) ? s[key].join(' ') : s[key])}"></label>`;
   view.innerHTML = `<div class="narrow">
-    <h1>設定</h1>
+    <h1>Settings</h1>
     <form id="f">
       <div class="form-grid">
-        ${field('newPerDay', '1日の新規カード数')}
-        ${field('dayStartHour', '1日の区切り（時）')}
-        ${field('learningSteps', '学習ステップ（分・スペース区切り）')}
-        ${field('relearningSteps', 'Again 後の再学習ステップ（分）')}
-        ${field('graduatingInterval', '卒業間隔（日）')}
-        ${field('maxInterval', '最大間隔（日）')}
-        ${field('startingEase', '初期 Ease')}
-        ${field('lapseEasePenalty', 'Again 時の Ease 減少')}
+        ${field('newPerDay', 'New cards per day')}
+        ${field('dayStartHour', 'Day starts at (hour)')}
+        ${field('learningSteps', 'Learning steps (minutes, space-separated)')}
+        ${field('relearningSteps', 'Relearning steps after Again (minutes)')}
+        ${field('graduatingInterval', 'Graduating interval (days)')}
+        ${field('maxInterval', 'Maximum interval (days)')}
+        ${field('startingEase', 'Starting ease')}
+        ${field('lapseEasePenalty', 'Ease penalty on Again')}
       </div>
       <div class="actions" style="margin-top:16px">
-        <button class="btn primary">保存</button>
-        <button class="btn ghost" type="button" id="def">初期値に戻す</button>
+        <button class="btn primary">Save</button>
+        <button class="btn ghost" type="button" id="def">Reset to defaults</button>
       </div>
     </form>
     <div class="section">
-      <h2>アカウント</h2>
+      <h2>Account</h2>
       <div class="meta" style="font-size:14px">${escapeHtml(user?.email ?? '')}</div>
-      <div class="meta">未送信の回答: ${data.pendingCount()} 件</div>
+      <div class="meta">Answers waiting to sync: ${data.pendingCount()}</div>
       <div class="actions" style="margin-top:12px">
-        <button class="btn" id="sync">${icon('sync')}今すぐ同期</button>
-        <button class="btn" id="import">${icon('upload')}CSV取り込み</button>
-        <a class="btn" href="#/usage">${icon('chart')}AI利用料</a>
-        <a class="btn" href="#/practice">${icon('chat')}会話練習</a>
-        <button class="btn ghost danger" id="logout">${icon('logout')}ログアウト</button>
+        <button class="btn" id="sync">${icon('sync')}Sync now</button>
+        <button class="btn" id="import">${icon('upload')}Import CSV</button>
+        <a class="btn" href="#/usage">${icon('chart')}AI costs</a>
+        <a class="btn" href="#/practice">${icon('chat')}Practice speaking</a>
+        <button class="btn ghost danger" id="logout">${icon('logout')}Log out</button>
       </div>
     </div>
   </div>`;
@@ -841,21 +841,21 @@ async function settings() {
       }
     }
     await data.saveSettings(out);
-    toast('保存しました');
+    toast('Saved');
   });
   view.querySelector('#def').addEventListener('click', async () => {
     await data.saveSettings({});
-    toast('初期値に戻しました');
+    toast('Reset to defaults');
     settings();
   });
   view.querySelector('#import').addEventListener('click', () => (location.hash = '#/import'));
   view.querySelector('#sync').addEventListener('click', async () => {
     await data.flush();
     renderStatus();
-    toast(data.pendingCount() ? `まだ ${data.pendingCount()} 件残っています（オフライン？）` : '同期しました');
+    toast(data.pendingCount() ? `${data.pendingCount()} still waiting (are you offline?)` : 'Synced');
   });
   view.querySelector('#logout').addEventListener('click', async () => {
-    if (data.pendingCount() && !confirm('未送信の回答が失われます。ログアウトしますか？')) return;
+    if (data.pendingCount() && !confirm('Answers that haven\'t synced will be lost. Log out anyway?')) return;
     await data.signOut();
     location.hash = '#/login';
   });
@@ -882,5 +882,5 @@ if (window.__ankiCapture) {
 router();
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js').catch((e) => console.warn('Service Worker 登録失敗', e));
+  navigator.serviceWorker.register('sw.js').catch((e) => console.warn('Service worker registration failed', e));
 }

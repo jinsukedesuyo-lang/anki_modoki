@@ -64,7 +64,7 @@ async function interact(body: Record<string, unknown>) {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return reply(405, { error: 'POST only' });
-  if (!API_KEY) return reply(500, { error: 'GEMINI_API_KEY が設定されていません（README の「AIイメージ生成」参照）' });
+  if (!API_KEY) return reply(500, { error: 'GEMINI_API_KEY is not set (see "AI image generation" in the README)' });
 
   // ----- 認証: ログイン中の本人だけ -----
   const authHeader = req.headers.get('Authorization') ?? '';
@@ -73,9 +73,9 @@ Deno.serve(async (req) => {
   });
   const { data: userData } = await asUser.auth.getUser();
   const user = userData?.user;
-  if (!user) return reply(401, { error: 'ログインが必要です' });
+  if (!user) return reply(401, { error: 'Please log in' });
   const { data: isOwner } = await asUser.rpc('anki_is_owner');
-  if (!isOwner) return reply(403, { error: 'このアカウントでは利用できません' });
+  if (!isOwner) return reply(403, { error: "This account can't use the AI features" });
 
   const admin = createClient(env('SUPABASE_URL'), env('SUPABASE_SERVICE_ROLE_KEY'));
 
@@ -91,7 +91,7 @@ Deno.serve(async (req) => {
       .gte('created_at', start.toISOString());
     const spent = (rows ?? []).reduce((s: number, r: any) => s + Number(r.cost_usd), 0);
     if (spent >= MONTHLY_BUDGET) {
-      return reply(402, { error: `今月の上限 $${MONTHLY_BUDGET} に達しました（使用済み $${spent.toFixed(4)}）。ANKI_MONTHLY_BUDGET_USD で変更できます` });
+      return reply(402, { error: `You've reached this month's limit of $${MONTHLY_BUDGET} (spent $${spent.toFixed(4)}). Change it with ANKI_MONTHLY_BUDGET_USD.` });
     }
   }
 
@@ -131,7 +131,7 @@ Deno.serve(async (req) => {
     // ----- ① 文脈からイメージを分析 -----
     let imagery: any = body.imagery ?? null;
     if (mode === 'full') {
-      if (!word || !sentence) return reply(400, { error: '単語とセンテンスが必要です' });
+      if (!word || !sentence) return reply(400, { error: 'A word and a sentence are required' });
       const shot = body.screenshot?.data ? body.screenshot : null;
       imagery = await run(
         'concept',
@@ -143,7 +143,7 @@ Deno.serve(async (req) => {
       );
     }
     const prompt = String(imagery?.image_prompt ?? body.image_prompt ?? '').trim();
-    if (!prompt) return reply(400, { error: '画像のプロンプトがありません' });
+    if (!prompt) return reply(400, { error: 'There is no image prompt' });
 
     // ----- ② そのイメージに沿った画像を生成 -----
     const image = await run(
@@ -154,7 +154,7 @@ Deno.serve(async (req) => {
       (json) => !!extractImage(json),
       (json) => {
         const img = extractImage(json);
-        if (!img) throw new Error('画像が返ってきませんでした（安全フィルタで拒否された可能性があります）');
+        if (!img) throw new Error('No image came back (it may have been blocked by the safety filter)');
         return img;
       },
     );

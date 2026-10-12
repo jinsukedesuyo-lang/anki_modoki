@@ -102,7 +102,7 @@ export async function signUrls(paths) {
       }
       store.set('urls', Object.fromEntries(urlCache));
     } catch (e) {
-      console.warn('画像URLの取得に失敗', e);
+      console.warn('Failed to sign image URLs', e);
     }
   }
   return (p) => (p ? urlCache.get(p)?.url ?? '' : '');
@@ -145,7 +145,7 @@ export async function getCard(id) {
 // image / refImage には { blob } (新規画像) / 文字列 (既存パス) / null (なし) を渡す
 export async function saveCard(input, existing = null) {
   const sentence = sanitizeSentence(input.sentence);
-  if (!sentence.replace(/<[^>]*>/g, '').trim()) throw new Error('センテンスが空です');
+  if (!sentence.replace(/<[^>]*>/g, '').trim()) throw new Error('The sentence is empty');
 
   // { blob } = 新しい画像（アップロード） / 文字列 or { path } = アップロード済み / null = なし
   const resolve = async (v) => (v?.blob ? uploadImage(v.blob) : typeof v === 'string' ? v : v?.path ?? null);
@@ -185,7 +185,7 @@ export async function generateImagery(payload) {
     } catch {
       /* 本文が JSON でなければ元のメッセージのまま */
     }
-    if (/Failed to send|NetworkError|fetch/i.test(msg)) msg = 'AI機能に接続できません。Edge Function がデプロイされているか確認してください（README 参照）';
+    if (/Failed to send|NetworkError|fetch/i.test(msg)) msg = "Couldn't reach the AI service. Check that the Edge Function is deployed (see README).";
     throw new Error(msg);
   }
   return data;
@@ -205,7 +205,7 @@ export async function listAiUsage(sinceIso = null) {
   if (sinceIso) q = q.gte('created_at', sinceIso);
   const { data, error } = await q;
   if (error) {
-    if (/anki_ai_usage/.test(error.message)) throw new Error('利用ログのテーブルがありません。Supabase で supabase/schema_ai.sql を実行してください');
+    if (/anki_ai_usage/.test(error.message)) throw new Error('The usage table is missing. Run supabase/schema_ai.sql in Supabase.');
     throw new Error(error.message);
   }
   return data;
@@ -278,7 +278,7 @@ export function flush() {
           store.set('outbox', outbox);
         }
       } catch (e) {
-        console.warn('同期を中断（あとで再送します）', e);
+        console.warn('Sync paused (will retry later)', e);
       } finally {
         flushing = null;
       }
@@ -298,7 +298,7 @@ export async function loadQueue() {
   let cards;
   try {
     await flush();
-    if (outbox.length) throw new Error('未送信の回答があるためキャッシュを使用');
+    if (outbox.length) throw new Error('Unsynced answers remain; using the cached queue');
     const learning = check(await sb.from('anki_cards').select('*').in('state', ['learning', 'relearning']).order('due').limit(1000));
     const review = check(await sb.from('anki_cards').select('*').eq('state', 'review').lt('due', de).order('due').limit(2000));
     const { count } = await sb

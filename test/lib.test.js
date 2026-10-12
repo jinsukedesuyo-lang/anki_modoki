@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { sanitizeSentence, extractWord, highlightWord, parseDelimited, sentenceAround, stripHtml } from '../public/js/lib.js';
+import { sanitizeSentence, extractWord, highlightWord, parseDelimited, sentenceAround, stripHtml, englishMeaning, hasJapanese } from '../public/js/lib.js';
 
 test('sanitizeSentence はハイライト以外のタグ・属性を除去する', () => {
   assert.equal(
@@ -38,6 +38,15 @@ test('sentenceAround は長いテキストから単語を含む1文を取り出�
     'Then he decided to procrastinate again. Last one is also quite long for testing purposes here.';
   assert.equal(sentenceAround(long, 'procrastinate'), 'Then he decided to procrastinate again.');
   assert.equal(sentenceAround('Short one.', 'x'), 'Short one.');
+});
+
+test('englishMeaning: 日本語の意味は出さず、AI の英語の意味に置き換える', () => {
+  assert.equal(englishMeaning({ meaning: 'to hide a problem' }), 'to hide a problem');
+  assert.equal(englishMeaning({ meaning: 'ごまかす', imagery: { meaning_en: 'avoid the problem', sense_en: 'x' } }), 'avoid the problem');
+  assert.equal(englishMeaning({ meaning: 'ごまかす', imagery: { sense_en: 'to avoid dealing with a problem' } }), 'to avoid dealing with a problem');
+  assert.equal(englishMeaning({ meaning: 'ごまかす' }), '');
+  assert.equal(hasJapanese('Café'), false);
+  assert.equal(hasJapanese('カタカナ'), true);
 });
 
 test('stripHtml はタグを除いてエンティティを戻す', () => {

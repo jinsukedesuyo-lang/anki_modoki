@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
-  "name": "Ankiもどき キャプチャ",
+  "name": "Anki Modoki Capture",
   "version": "1.0.0",
-  "description": "YouTube / Netflix（Language Reactor）の字幕・単語・スクリーンショットから Ankiもどき のカードを作成します。",
+  "description": "Make Anki Modoki cards from YouTube / Netflix (Language Reactor) subtitles, the selected word and a screenshot.",
   "icons": { "16": "icons/icon-16.png", "48": "icons/icon-48.png", "128": "icons/icon-128.png" },
-  "action": { "default_title": "Ankiもどき: カード作成 (Alt+A)", "default_icon": { "16": "icons/icon-16.png", "48": "icons/icon-48.png" } },
+  "action": { "default_title": "Anki Modoki: make a card (Alt+A)", "default_icon": { "16": "icons/icon-16.png", "48": "icons/icon-48.png" } },
   "background": { "service_worker": "background.js" },
   "permissions": ["activeTab", "scripting", "contextMenus", "storage", "tabs"],
   "host_permissions": [
@@ -24,7 +24,7 @@
   "commands": {
     "capture": {
       "suggested_key": { "default": "Alt+A" },
-      "description": "今の字幕・選択した単語・スクリーンショットでカードを作成"
+      "description": "Make a card from the current subtitle, the selected word and a screenshot"
     }
   },
   "options_page": "options.html"

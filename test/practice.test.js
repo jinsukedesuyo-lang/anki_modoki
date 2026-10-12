@@ -16,9 +16,11 @@ const cards = [
 test('対象の表現・文脈・イメージが入り、HTML タグは残らない', () => {
   const p = buildPracticePrompt({ cards, mode: 'roleplay', level: 'B1' });
   assert.match(p, /1\. "gloss over" — meaning here: to avoid talking about a problem — native image: polishing a shiny layer over a crack — where I met it: "He tried to gloss over the mistake\." \(The Office\)/);
-  // 英語の語義が無いカードは、日本語メモを「不正確かもしれない参考」として渡し、意味は文脈から判断させる
-  assert.match(p, /2\. "sugarcoat" — meaning: judge it from the sentence below \(my Japanese note, may be inaccurate: オブラートに包む\)/);
-  assert.match(p, /always use the sense that fits the sentence/);
+  // 日本語の意味は渡さず、英語の意味が無ければ文脈から判断させる
+  assert.match(p, /2\. "sugarcoat" — meaning: judge it from the sentence below/);
+  assert.doesNotMatch(p, /オブラート/);
+  assert.match(p, /Always use the sense that fits the sentence/);
+  assert.match(p, /Never use Japanese/);
   assert.doesNotMatch(p, /<span/);
   assert.match(p, /Mode: role-play/);
   assert.match(p, /Don't say it before I try/);
@@ -29,7 +31,6 @@ test('つまずいたときの3つのルールが入る', () => {
   const p = buildPracticePrompt({ cards, mode: 'retrieval' });
   // 1. 「わからない」→ すぐ答える
   assert.match(p, /"I don't understand".*answer IMMEDIATELY/s);
-  assert.match(p, /わからない/);
   // 2. 文が作れない → 例文を出してから自分の文を作らせる
   assert.match(p, /Can't make a sentence.*example sentence.*make my own sentence/s);
   // 3. 不自然 → 先に進まず言い直させる
@@ -52,10 +53,12 @@ test('ヒントでも出てこなければ答えを教えて先へ進む（ル�
   assert.match(buildPracticePrompt({ cards, mode: 'questions' }), /If I still miss it after the hint.*ask me to use it in my own sentence/);
 });
 
-test('◎△× は「自分の文で使えたか」で判定する', () => {
+test('◎△× は「自分の文で使えたか」で判定し、レポートも英語', () => {
   const p = buildPracticePrompt({ cards });
-  assert.match(p, /◎ ヒントも例文もなしで自分の文に使えた/);
-  assert.match(p, /× 最後まで自分の文で使えなかった/);
+  assert.match(p, /short report in simple English/);
+  assert.match(p, /◎ on my own, with no hint or example/);
+  assert.match(p, /× never in my own sentence/);
+  assert.doesNotMatch(p, /[぀-ヿ一-鿿]/);
 });
 
 test('音声モードでも、最後のレポートでは表を使ってよい', () => {

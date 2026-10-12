@@ -5,12 +5,12 @@ export const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta
 
 // ---------- プロンプト ----------
 
-export const IMAGERY_SYSTEM = `You help Japanese learners of English acquire the mental image a native English speaker has for a word or phrase, instead of a Japanese dictionary translation.
+export const IMAGERY_SYSTEM = `You help learners of English acquire the mental image a native English speaker has for a word or phrase, so they can think in English without translating. Write everything in simple, clear English (B1 level); never use any other language.
 
 Work in this order:
 1. Identify the exact sense of the target expression as it is used in THIS sentence (word-sense disambiguation). Use the sentence, the video title and the screenshot (if given) only for this.
 2. Find the core image of that sense: the physical action, movement, shape or force a native speaker feels underneath the word. Use the word's parts and origin when they help (e.g. em- "into" + body → "put something formless into a body"; de- "away" + flect "bend" → "bend something away from you"). If the literal origin conflicts with this sense, use the picture that fits this sense.
-3. Explain how that core image maps onto the situation in this sentence (scene_ja). This is the ONLY place where the sentence's topic appears.
+3. Explain how that core image maps onto the situation in this sentence (scene_en). This is the ONLY place where the sentence's topic appears.
 4. Design a visual metaphor that shows the MECHANISM of the word with concrete, everyday objects:
    - Abstract away the sentence's own topic. Do NOT draw the sentence's subjects or objects (people, feelings, relationships, places in the sentence). Replace them with neutral stand-ins (e.g. a shapeless glowing liquid, a clay figure, a ball, a box, a hand, a plant).
    - The picture must show the action or change the word expresses, not a mood. Prefer a literal, physical demonstration.
@@ -30,20 +30,19 @@ Rules for image_prompt:
 - No text, letters, numbers, captions, subtitles, logos or speech bubbles.
 - Style: simple storybook-style flat vector illustration with clear outlines, solid colors, plain light background, even lighting, 16:9. Do not call it a diagram, infographic or dictionary illustration (that invites labels).
 
-Japanese fields must sound natural to a Japanese reader and describe a picture or feeling, not list dictionary equivalents.`;
+Text fields describe a picture or feeling in plain words a learner can follow, not a list of dictionary synonyms.`;
 
 export const IMAGERY_SCHEMA = {
   type: 'object',
   properties: {
     sense_en: { type: 'string', description: 'The sense used in this sentence, plain English, max 20 words.' },
     core_image_en: { type: 'string', description: 'What a native speaker pictures/feels, max 40 words.' },
-    core_image_ja: { type: 'string', description: 'core image in Japanese as a scene or sensation, not a translation. Max 80 characters.' },
-    scene_ja: { type: 'string', description: 'How the core image fits the situation of this sentence, in Japanese. Max 80 characters.' },
-    meaning_ja: { type: 'string', description: 'A short Japanese gloss for this context only (one expression, about 10 characters).' },
+    scene_en: { type: 'string', description: 'How the core image fits the situation of this sentence, in simple English. Max 30 words.' },
+    meaning_en: { type: 'string', description: 'A short, simple English paraphrase of the meaning in this context only (max 10 words), not a dictionary entry.' },
     visual_metaphor: { type: 'string', description: 'The concrete objects and action chosen in step 4, without the sentence topic. Max 30 words.' },
     image_prompt: { type: 'string', description: 'Image generation prompt that depicts the visual metaphor (not the sentence topic or video scene), following the rules.' },
   },
-  required: ['sense_en', 'core_image_en', 'core_image_ja', 'scene_ja', 'meaning_ja', 'visual_metaphor', 'image_prompt'],
+  required: ['sense_en', 'core_image_en', 'scene_en', 'meaning_en', 'visual_metaphor', 'image_prompt'],
 };
 
 export type ImageryInput = { sentence: string; word: string; title?: string; hasScreenshot?: boolean };

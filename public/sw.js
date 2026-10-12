@@ -1,5 +1,5 @@
 // オフライン対応: アプリ本体はネット優先（更新をすぐ反映）、画像とライブラリはキャッシュ優先
-const SHELL = 'shell-v3';
+const SHELL = 'shell-v4';
 const RUNTIME = 'runtime-v1';
 const SHELL_FILES = [
   './',

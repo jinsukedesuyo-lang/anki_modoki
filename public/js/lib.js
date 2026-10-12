@@ -111,6 +111,19 @@ export function parseDelimited(text) {
   return rows.filter((r) => r.some((c) => c.trim() !== ''));
 }
 
+// 英語だけで考えられるよう、日本語（かな・漢字）を含む文字列は画面に出さない
+export function hasJapanese(s) {
+  return /[぀-ヿ㐀-鿿ｦ-ﾟ]/.test(String(s ?? ''));
+}
+
+// カードの英語の意味: 意味欄が英語ならそれ、日本語なら AI の英語の意味、どちらもなければ ''
+export function englishMeaning(card) {
+  const m = String(card?.meaning ?? '').trim();
+  if (m && !hasJapanese(m)) return m;
+  const im = card?.imagery ?? {};
+  return im.meaning_en || im.sense_en || '';
+}
+
 export function uuid() {
   return crypto.randomUUID();
 }

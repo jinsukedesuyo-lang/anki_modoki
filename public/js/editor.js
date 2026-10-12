@@ -1,6 +1,6 @@
 // カード作成・編集フォーム
 import * as data from './data.js';
-import { sanitizeSentence, extractWord, escapeHtml, highlightWord, stripHtml } from './lib.js';
+import { sanitizeSentence, extractWord, escapeHtml, highlightWord, stripHtml, hasJapanese, englishMeaning } from './lib.js';
 import { icon } from './icons.js';
 
 const SIZE = { image: 960, refImage: 640 }; // 自動リサイズ後の最大幅(px)
@@ -64,22 +64,12 @@ async function lookup(word) {
         if (found.length) return found;
       }
     } catch (e) {
-      console.warn('辞書の取得に失敗', e);
+      console.warn('Dictionary lookup failed', e);
     }
   }
   return [];
 }
 
-// 英文 → 日本語。非公式エンドポイントなので失敗したら Google 翻訳のタブを開く
-async function translate(text) {
-  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ja&dt=t&q=${encodeURIComponent(text)}`;
-  const res = await fetchWithTimeout(url);
-  if (!res.ok) throw new Error('translate failed');
-  const json = await res.json();
-  return json[0].map((x) => x[0]).join('');
-}
-
-const googleTranslateUrl = (t) => `https://translate.google.com/?sl=en&tl=ja&op=translate&text=${encodeURIComponent(t)}`;
 const imageSearchUrl = (w) => `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(w)}`;
 
 /**
@@ -97,57 +87,58 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
 
   root.innerHTML = `
     <div class="row" style="margin:12px 0 16px">
-      <h1 style="margin:0">${isNew ? 'カードを追加' : 'カードを編集'}</h1>
+      <h1 style="margin:0">${isNew ? 'Add a card' : 'Edit card'}</h1>
     </div>
     <div class="studio">
       <div class="form">
         <div class="field">
-          <span class="label">センテンス（i+1 の英文）</span>
-          <span class="tools"><button class="btn ghost sm" id="hlBtn" title="選択した単語を色付け (Alt+H)">${icon('brush', 18)}色付け</button></span>
+          <span class="label">Sentence (i+1)</span>
+          <span class="tools"><button class="btn ghost sm" id="hlBtn" title="Highlight the selected word (Alt+H)">${icon('brush', 18)}Highlight</button></span>
           <div id="sentence" class="sentence-edit" contenteditable="true"
-               data-placeholder="字幕の英文を貼り付けて、知らない単語を選択 →「色付け」"></div>
+               data-placeholder="Paste the subtitle line, select the unknown word, then Highlight"></div>
         </div>
 
-        <label class="field"><span class="label">日本語の意味（この文脈の意味だけ）</span>
-          <textarea id="meaning" rows="2" placeholder="例: 〜をうやむやにする"></textarea>
+        <label class="field"><span class="label">Meaning in English (this context only)</span>
+          <textarea id="meaning" rows="2" placeholder="e.g. to avoid dealing with a problem"></textarea>
+          <span class="meta" id="meaningNote" hidden>The old non-English meaning is hidden. Write it in English, or pick a definition below.</span>
         </label>
 
         <div>
-          <div class="sub-label">英英辞典 <span class="meta" id="wordInfo"></span></div>
+          <div class="sub-label">Dictionary <span class="meta" id="wordInfo"></span></div>
           <div class="chips" style="padding-top:0">
-            <a class="chip" id="imgSearch" target="_blank" rel="noopener">${icon('search', 18)}Google画像検索</a>
+            <a class="chip" id="imgSearch" target="_blank" rel="noopener">${icon('search', 18)}Google Images</a>
             <a class="chip" id="cambridge" target="_blank" rel="noopener">Cambridge</a>
             <a class="chip" id="longman" target="_blank" rel="noopener">Longman</a>
           </div>
-          <div class="desc dict" id="dict"><span class="meta">単語を色付けすると定義が表示されます。文脈に合う定義の「和訳」を押してください</span></div>
+          <div class="desc dict" id="dict"><span class="meta">Highlight a word to see its definitions. Press "Use" on the one that fits this sentence.</span></div>
         </div>
 
         <div>
-          <div class="sub-label">${icon('spark', 18)}ネイティブのイメージ（AI） <span class="meta" id="aiCost"></span></div>
+          <div class="sub-label">${icon('spark', 18)}How natives picture it (AI) <span class="meta" id="aiCost"></span></div>
           <div class="desc" id="aiResult"></div>
           <div class="chips" style="padding-top:8px">
-            <button class="chip active" id="aiGen" type="button">${icon('spark', 18)}文脈からイメージと画像を生成</button>
-            <button class="chip" id="aiImg" type="button" hidden>${icon('replay', 18)}画像だけ作り直す</button>
+            <button class="chip active" id="aiGen" type="button">${icon('spark', 18)}Generate from context</button>
+            <button class="chip" id="aiImg" type="button" hidden>${icon('replay', 18)}Redraw image only</button>
           </div>
         </div>
 
         <div class="img-grid">
           <div>
-            <div class="sub-label">場面のスクリーンショット</div>
+            <div class="sub-label">Scene screenshot</div>
             <div class="dropzone" id="zone-image" tabindex="0"></div>
           </div>
           <div>
-            <div class="sub-label">語源 / イメージ画像</div>
+            <div class="sub-label">Core image</div>
             <div class="dropzone" id="zone-refImage" tabindex="0"></div>
           </div>
         </div>
 
         <div class="actions sticky">
-          <button class="btn primary" id="save">保存 <span class="kbd">Ctrl+Enter</span></button>
+          <button class="btn primary" id="save">Save <span class="kbd">Ctrl+Enter</span></button>
           <span class="meta" id="autosave"></span>
           <span class="spacer"></span>
-          ${isNew ? '' : `<button class="btn" id="reset">${icon('replay')}学習をリセット</button>`}
-          <button class="btn ghost danger" id="del" ${isNew ? 'hidden' : ''}>${icon('trash')}${isNew ? '破棄' : '削除'}</button>
+          ${isNew ? '' : `<button class="btn" id="reset">${icon('replay')}Reset progress</button>`}
+          <button class="btn ghost danger" id="del" ${isNew ? 'hidden' : ''}>${icon('trash')}${isNew ? 'Discard' : 'Delete'}</button>
         </div>
       </div>
 
@@ -155,7 +146,7 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
         <div class="player blank" id="pvPlayer"></div>
         <div class="preview-title" id="pvTitle"></div>
         <div class="meta" id="pvImagery" style="font-size:13px;margin-bottom:4px"></div>
-        <div class="meta">${source ? `<a class="link" href="${escapeHtml(source.url)}" target="_blank" rel="noopener">${escapeHtml(source.title || source.url)}</a>` : 'プレビュー（復習時の裏面）'}</div>
+        <div class="meta">${source ? `<a class="link" href="${escapeHtml(source.url)}" target="_blank" rel="noopener">${escapeHtml(source.title || source.url)}</a>` : 'Preview (back of the card)'}</div>
       </aside>
     </div>`;
 
@@ -170,7 +161,8 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
   // ----- センテンス -----
   if (card) {
     sentenceEl.innerHTML = sanitizeSentence(card.sentence);
-    meaningEl.value = card.meaning;
+    meaningEl.value = englishMeaning(card);
+    if (hasJapanese(card.meaning)) $('#meaningNote').hidden = false;
   } else if (capture) {
     sentenceEl.innerHTML = highlightWord(capture.sentence || '', capture.word || '');
   }
@@ -184,14 +176,14 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
 
   function toggleHighlight() {
     const sel = window.getSelection();
-    if (!sel.rangeCount || !sentenceEl.contains(sel.anchorNode)) return toast('センテンス内の単語を選択してください');
+    if (!sel.rangeCount || !sentenceEl.contains(sel.anchorNode)) return toast('Select a word inside the sentence');
     const range = sel.getRangeAt(0);
     const parentHl = (n) => (n.nodeType === 3 ? n.parentElement : n)?.closest?.('.hl');
     const existing = parentHl(range.startContainer);
     if (existing && sentenceEl.contains(existing)) {
       existing.replaceWith(...existing.childNodes);
     } else {
-      if (range.collapsed) return toast('色付けする単語を選択してください');
+      if (range.collapsed) return toast('Select the word to highlight');
       // 前後の空白は色付けしない
       const text = range.toString();
       const span = document.createElement('span');
@@ -216,7 +208,7 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
 
   function onSentenceChange() {
     const w = currentWord();
-    $('#wordInfo').innerHTML = w ? `— <span class="hl">${escapeHtml(w)}</span>` : '— 単語がまだ色付けされていません';
+    $('#wordInfo').innerHTML = w ? `— <span class="hl">${escapeHtml(w)}</span>` : '— no word highlighted yet';
     updatePreview();
     $('#imgSearch').href = imageSearchUrl(w);
     $('#cambridge').href = `https://dictionary.cambridge.org/dictionary/english/${encodeURIComponent(w)}`;
@@ -231,12 +223,12 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
   // ----- 辞書 -----
   async function renderDict(word) {
     const box = $('#dict');
-    box.innerHTML = '<span class="meta">検索中…</span>';
+    box.innerHTML = '<span class="meta">Looking up…</span>';
     try {
       const meanings = await lookup(word);
       if (word !== lastWord) return;
       if (!meanings.length) {
-        box.innerHTML = `<span class="meta">「${escapeHtml(word)}」は見つかりませんでした。原形（例: running → run）で試すか、上のリンクから調べてください。</span>`;
+        box.innerHTML = `<span class="meta">No entry for "${escapeHtml(word)}". Try the base form (running → run), or use the links above.</span>`;
         return;
       }
       box.innerHTML = meanings
@@ -245,7 +237,7 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
             .map(
               (d) => `<li><span class="def">${escapeHtml(d.definition)}</span>
                 ${d.example ? `<div class="ex">${escapeHtml(d.example)}</div>` : ''}
-                <div class="row" style="margin-top:4px"><button class="btn sm tr-btn">${icon('translate', 18)}和訳</button></div></li>`
+                <div class="row" style="margin-top:4px"><button class="btn sm use-def">${icon('check', 18)}Use</button></div></li>`
             )
             .join('')}</ol>`
         )
@@ -255,29 +247,14 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
     }
   }
 
-  $('#dict').addEventListener('click', async (e) => {
-    const btn = e.target.closest('.tr-btn');
+  // 文脈に合う英英の定義を、そのまま意味として使う
+  $('#dict').addEventListener('click', (e) => {
+    const btn = e.target.closest('.use-def');
     if (!btn) return;
-    const li = btn.closest('li');
-    const def = li.querySelector('.def').textContent;
-    btn.disabled = true;
-    try {
-      const ja = await translate(def);
-      li.querySelector('.tr')?.remove();
-      const div = document.createElement('div');
-      div.className = 'tr';
-      div.innerHTML = `<span>${escapeHtml(ja)}</span><button class="btn primary sm use-btn">${icon('check', 18)}意味に入れる</button>`;
-      div.querySelector('.use-btn').addEventListener('click', () => {
-        meaningEl.value = ja;
-        meaningEl.focus();
-        updatePreview();
-      });
-      li.append(div);
-    } catch {
-      window.open(googleTranslateUrl(def), '_blank', 'noopener');
-    } finally {
-      btn.disabled = false;
-    }
+    meaningEl.value = btn.closest('li').querySelector('.def').textContent;
+    $('#meaningNote').hidden = true;
+    meaningEl.focus();
+    updatePreview();
   });
 
   // ----- 画像 -----
@@ -299,20 +276,23 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
     const player = $('#pvPlayer');
     player.className = `player ${shot ? '' : 'blank'}`;
     player.innerHTML = `${shot ? `<img src="${escapeHtml(shot)}" alt="">` : ''}
-      <div class="caption"><span class="line">${sanitizeSentence(sentenceEl.innerHTML) || '<span style="opacity:.6">センテンス</span>'}</span></div>`;
-    $('#pvTitle').textContent = meaningEl.value.trim() || '日本語の意味';
+      <div class="caption"><span class="line">${sanitizeSentence(sentenceEl.innerHTML) || '<span style="opacity:.6">Sentence</span>'}</span></div>`;
+    $('#pvTitle').textContent = meaningEl.value.trim() || 'Meaning';
     $('#pvTitle').style.opacity = meaningEl.value.trim() ? 1 : 0.5;
-    $('#pvImagery').textContent = imagery?.core_image_ja ?? '';
+    $('#pvImagery').textContent = imagery?.core_image_en ?? '';
   }
-  meaningEl.addEventListener('input', updatePreview);
+  meaningEl.addEventListener('input', () => {
+    $('#meaningNote').hidden = true;
+    updatePreview();
+  });
 
   function drawZone(key) {
     const zone = $(`#zone-${key}`);
     const v = images[key];
     zone.classList.toggle('filled', !!v);
     zone.innerHTML = v
-      ? `<img src="${escapeHtml(srcOf(v))}" alt=""><button class="icon-btn remove" title="画像を外す">${icon('close', 20)}</button>`
-      : `${icon('image')}<div>Ctrl+V で貼り付け・ドロップ・クリックで選択</div>${key === 'refImage' ? '<div>Google画像で右クリック →「画像をコピー」</div>' : ''}`;
+      ? `<img src="${escapeHtml(srcOf(v))}" alt=""><button class="icon-btn remove" title="Remove image">${icon('close', 20)}</button>`
+      : `${icon('image')}<div>Paste (Ctrl+V), drop, or click to choose</div>${key === 'refImage' ? '<div>On Google Images: right-click → Copy image</div>' : ''}`;
     if (key === 'image') updatePreview();
     zone.querySelector('.remove')?.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -328,12 +308,12 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
     const box = $('#aiResult');
     $('#aiImg').hidden = !imagery?.image_prompt;
     if (!imagery) {
-      box.innerHTML = `<span class="meta">単語を色付けして「生成」を押すと、この文脈でネイティブが思い浮かべるイメージを言葉と画像で作ります。スクショがあると場面に合わせやすくなります。</span>`;
+      box.innerHTML = `<span class="meta">Highlight the word and press Generate. The AI describes how a native speaker pictures it in this context and draws that core image. A screenshot helps it pick the right meaning.</span>`;
       return;
     }
     box.innerHTML = `
-      <div style="font-size:15px;font-weight:500">${escapeHtml(imagery.core_image_ja || '')}</div>
-      ${imagery.scene_ja ? `<div style="margin-top:6px">${escapeHtml(imagery.scene_ja)}</div>` : ''}
+      <div style="font-size:15px;font-weight:500">${escapeHtml(imagery.core_image_en || '')}</div>
+      ${imagery.scene_en ? `<div style="margin-top:6px">${escapeHtml(imagery.scene_en)}</div>` : ''}
       ${imagery.sense_en ? `<div class="meta" style="margin-top:6px">${escapeHtml(imagery.sense_en)}</div>` : ''}`;
   }
 
@@ -361,7 +341,7 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
   async function runAi(mode) {
     const sentence = stripHtml(sanitizeSentence(sentenceEl.innerHTML));
     const word = currentWord();
-    if (mode === 'full' && !word) return toast('先にセンテンスの単語を色付けしてください');
+    if (mode === 'full' && !word) return toast('Highlight the word in the sentence first');
     const buttons = [$('#aiGen'), $('#aiImg')];
     buttons.forEach((b) => (b.disabled = true));
     $('#aiCost').textContent = '';
@@ -377,10 +357,10 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
       });
       imagery = res.imagery;
       // 意味を先に入れてから画像をセット（画像セット時の自動保存に意味とイメージも含める）
-      if (!meaningEl.value.trim() && imagery.meaning_ja) meaningEl.value = imagery.meaning_ja;
+      if (!meaningEl.value.trim() && imagery.meaning_en) meaningEl.value = imagery.meaning_en;
       await setImage('refImage', await dataUrlToBlob(`data:${res.image.mime_type};base64,${res.image.data}`));
       const usd = res.usage?.cost_usd ?? 0;
-      $('#aiCost').textContent = `— 今回 $${usd.toFixed(4)}（約 ${(usd * data.usdJpy()).toFixed(2)} 円）`;
+      $('#aiCost').textContent = `— this time $${usd.toFixed(4)} (about ¥${(usd * data.usdJpy()).toFixed(2)})`;
       renderImagery();
       updatePreview();
     } catch (e) {
@@ -399,18 +379,18 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
     const box = $('#aiResult');
     const zone = $('#zone-refImage');
     const label = (sec) =>
-      mode === 'image' ? 'イメージに合わせて画像を描き直しています…' : sec < 8 ? '文脈から意味とイメージを分析しています…' : 'イメージに合わせて画像を描いています…';
+      mode === 'image' ? 'Redrawing the image…' : sec < 8 ? 'Reading the context and finding the core image…' : 'Drawing the image…';
 
     const prevBox = box.innerHTML;
     if (mode === 'full') {
       box.innerHTML = `<div class="ai-busy" role="status" aria-live="polite">
         <span class="spinner" aria-hidden="true"></span>
-        <div><div class="busy-label">${label(0)}</div><div class="meta"><span class="busy-sec">0</span> 秒 · ふつう 10〜40 秒</div></div>
+        <div><div class="busy-label">${label(0)}</div><div class="meta"><span class="busy-sec">0</span>s · usually 10–40s</div></div>
       </div>`;
     }
     const overlay = document.createElement('div');
     overlay.className = 'zone-busy';
-    overlay.innerHTML = `<span class="spinner" aria-hidden="true"></span><span>画像を生成中…</span>`;
+    overlay.innerHTML = `<span class="spinner" aria-hidden="true"></span><span>Generating image…</span>`;
     overlay.addEventListener('click', (e) => e.stopPropagation()); // 生成中にファイル選択を開かない
     zone.append(overlay);
 
@@ -441,7 +421,7 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
       images[key] = { blob: resized, url: URL.createObjectURL(resized) };
       drawZone(key);
     } catch {
-      toast('画像を読み込めませんでした');
+      toast('Couldn\'t read that image');
       return;
     }
     autoSave(); // 保存ボタンの押し忘れ対策: 画像が入った時点で一時保存
@@ -476,7 +456,7 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
         if (!res.ok) throw new Error();
         setImage(key, await res.blob());
       } catch {
-        toast('このサイトの画像は直接ドロップできません。右クリック →「画像をコピー」→ Ctrl+V で貼ってください');
+        toast('Images from this site can\'t be dropped. Right-click → Copy image, then press Ctrl+V.');
       }
     });
   }
@@ -531,18 +511,18 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
   function autoSave() {
     const status = $('#autosave');
     if (!stripHtml(sanitizeSentence(sentenceEl.innerHTML))) {
-      status.textContent = 'センテンスを入れると自動保存されます';
+      status.textContent = 'Add a sentence to turn on autosave';
       return;
     }
-    status.textContent = '自動保存中…';
+    status.textContent = 'Autosaving…';
     queue(persist)
       .then(() => {
-        const t = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
-        status.textContent = `自動保存しました ${t}`;
+        const t = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        status.textContent = `Autosaved at ${t}`;
       })
       .catch((e) => {
         status.textContent = '';
-        toast(`自動保存に失敗しました: ${e.message}`);
+        toast(`Autosave failed: ${e.message}`);
       });
   }
 
@@ -550,16 +530,16 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
   async function save() {
     if (saving) return;
     const sentence = sanitizeSentence(sentenceEl.innerHTML);
-    if (!stripHtml(sentence)) return toast('センテンスを入力してください');
-    if (!extractWord(sentence) && !confirm('単語が色付けされていません。このまま保存しますか？')) return;
+    if (!stripHtml(sentence)) return toast('Enter a sentence');
+    if (!extractWord(sentence) && !confirm('No word is highlighted. Save anyway?')) return;
     saving = true;
     $('#save').disabled = true;
     try {
       const saved = await queue(persist);
-      toast(isNew ? `「${saved.word || '新しいカード'}」を保存しました` : '保存しました');
+      toast(isNew ? `Saved "${saved.word || 'new card'}"` : 'Saved');
       onSaved(saved);
     } catch (e) {
-      toast(`保存に失敗しました: ${e.message}`);
+      toast(`Couldn't save: ${e.message}`);
     } finally {
       saving = false;
       const btn = $('#save');
@@ -569,16 +549,16 @@ export function renderEditor(root, { card = null, capture = null, onSaved, onDel
   $('#save').addEventListener('click', save);
 
   $('#reset')?.addEventListener('click', async () => {
-    if (!confirm('このカードを未学習の状態に戻しますか？')) return;
+    if (!confirm('Reset this card to new?')) return;
     await data.resetCard(current);
-    toast('リセットしました');
+    toast('Progress reset');
   });
   $('#del').addEventListener('click', async () => {
     if (!current) return;
-    if (!confirm(isNew ? '自動保存したこのカードを破棄しますか？' : 'このカードを削除しますか？')) return;
+    if (!confirm(isNew ? 'Discard this autosaved card?' : 'Delete this card?')) return;
     await chain; // 自動保存の途中なら終わるのを待ってから消す
     await data.deleteCard(current);
-    toast(isNew ? '破棄しました' : '削除しました');
+    toast(isNew ? 'Discarded' : 'Deleted');
     if (onDeleted) onDeleted();
     else onSaved(null); // 新規画面: 空のフォームに戻す
   });
